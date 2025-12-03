@@ -1,6 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import '../models/transaction.dart';
+import '../models/transaction.dart' as models;
 import '../models/budget.dart';
 
 class DatabaseService {
@@ -32,7 +32,6 @@ class DatabaseService {
     const integerType = 'INTEGER NOT NULL';
     const realType = 'REAL NOT NULL';
 
-    // Transactions table
     await db.execute('''
       CREATE TABLE transactions (
         id $idType,
@@ -46,7 +45,6 @@ class DatabaseService {
       )
     ''');
 
-    // Budgets table
     await db.execute('''
       CREATE TABLE budgets (
         id $idType,
@@ -59,17 +57,15 @@ class DatabaseService {
     ''');
   }
 
-  // Transaction CRUD operations
-  Future<Transaction> createTransaction(Transaction transaction) async {
+  Future<models.Transaction> createTransaction(models.Transaction transaction) async {
     final db = await instance.database;
     await db.insert('transactions', transaction.toMap());
     return transaction;
   }
 
-  Future<List<Transaction>> getTransactionsByMonth(int year, int month) async {
+  Future<List<models.Transaction>> getTransactionsByMonth(int year, int month) async {
     final db = await instance.database;
     
-    // Format: YYYY-MM
     final monthStr = month.toString().padLeft(2, '0');
     final yearMonthPrefix = '$year-$monthStr';
 
@@ -80,19 +76,19 @@ class DatabaseService {
       orderBy: 'date DESC, time DESC',
     );
 
-    return result.map((json) => Transaction.fromMap(json)).toList();
+    return result.map((json) => models.Transaction.fromMap(json)).toList();
   }
 
-  Future<List<Transaction>> getAllTransactions() async {
+  Future<List<models.Transaction>> getAllTransactions() async {
     final db = await instance.database;
     final result = await db.query(
       'transactions',
       orderBy: 'date DESC, time DESC',
     );
-    return result.map((json) => Transaction.fromMap(json)).toList();
+    return result.map((json) => models.Transaction.fromMap(json)).toList();
   }
 
-  Future<int> updateTransaction(Transaction transaction) async {
+  Future<int> updateTransaction(models.Transaction transaction) async {
     final db = await instance.database;
     return db.update(
       'transactions',
@@ -111,7 +107,6 @@ class DatabaseService {
     );
   }
 
-  // Budget CRUD operations
   Future<Budget> createBudget(Budget budget) async {
     final db = await instance.database;
     await db.insert('budgets', budget.toMap());
