@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/finance_provider.dart';
 import '../models/transaction.dart';
+import '../models/category.dart';
 import '../data/categories.dart';
 
 class AddTransactionDialog extends StatefulWidget {
