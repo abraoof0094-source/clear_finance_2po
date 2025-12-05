@@ -230,8 +230,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey[500], size: 16),
                     ],
                   ),
                 ),

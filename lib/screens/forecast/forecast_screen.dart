@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/finance_provider.dart';
 import '../../models/forecast_item.dart';
-import '../../widgets/add_forecast_item_dialog.dart';
+import '../../widgets/add_forecast_item_dialog.dart'; // Ensure this path is correct!
 import 'liability_detail_screen.dart';
 import 'asset_detail_screen.dart';
 
@@ -53,6 +53,8 @@ class ForecastScreen extends StatelessWidget {
 
                     // NET WORTH CARD
                     _buildNetWorthCard(provider),
+
+                    const SizedBox(height: 32),
                   ],
                 ),
               ),
@@ -61,11 +63,23 @@ class ForecastScreen extends StatelessWidget {
             // 2. Liabilities Section
             if (liabilities.isNotEmpty) ...[
               SliverToBoxAdapter(
-                  child: _buildSectionHeader(
-                      "Liabilities",
-                      liabilities.fold(0.0, (sum, item) => sum + item.currentAmount),
-                      isLiability: true
-                  )
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Liabilities", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                        child: Text(
+                          "-${provider.currencyFormat.format(liabilities.fold(0.0, (sum, item) => sum + item.currentAmount))}",
+                          style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               SliverList(
                 delegate: SliverChildBuilderDelegate(
@@ -73,23 +87,33 @@ class ForecastScreen extends StatelessWidget {
                   childCount: liabilities.length,
                 ),
               ),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
             ],
 
             // 3. Assets Section
             if (assets.isNotEmpty) ...[
-              SliverToBoxAdapter(
-                  child: _buildSectionHeader(
-                      "Assets & Goals",
-                      assets.fold(0.0, (sum, item) => sum + item.currentAmount),
-                      isLiability: false
-                  )
-              ),
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                      (context, index) => _buildAssetCardAsList(context, assets[index], provider),
-                  childCount: assets.length,
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  child: Text("Assets & Goals", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
               ),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 1.1,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                        (context, index) => _buildAssetCard(context, assets[index], provider),
+                    childCount: assets.length,
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
 
             // 4. Empty State
@@ -98,20 +122,24 @@ class ForecastScreen extends StatelessWidget {
                 hasScrollBody: false,
                 child: Center(
                   child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.account_tree_rounded, size: 64, color: Colors.grey[800]),
-                      const SizedBox(height: 16),
-                      const Text("No strategy yet.", style: TextStyle(color: Colors.grey, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Text("Add your Loans or Goals to start planning.", style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                    ],
-                  ),
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.timeline_outlined, size: 48, color: Colors.grey[600]),
+                        const SizedBox(height: 12),
+                        const Text(
+                          "No strategy yet.",
+                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Tap the + button below to add a loan or goal.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                        ),
+                      ],
+                    )
                 ),
               ),
-
-            // Bottom Padding
-            const SliverToBoxAdapter(child: SizedBox(height: 100)),
           ],
         ),
       ),
@@ -195,30 +223,6 @@ class ForecastScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionHeader(String title, double total, {bool isLiability = false}) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 24, 20, 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-          if (total > 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                  color: isLiability ? Colors.red.withOpacity(0.1) : Colors.green.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8)
-              ),
-              child: Text(
-                "${isLiability ? '-' : '+'}${total.toStringAsFixed(0)}", // Simplified formatting for header
-                style: TextStyle(color: isLiability ? Colors.redAccent : Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildLiabilityCard(BuildContext context, ForecastItem item, FinanceProvider provider) {
     double progress = 0;
     if (item.targetAmount > 0) {
@@ -258,7 +262,7 @@ class ForecastScreen extends StatelessWidget {
                       Text(item.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
                       const SizedBox(height: 4),
                       Text(
-                        item.type == ForecastType.debtInterestOnly ? "Interest Only" : "Reducing Balance",
+                        item.type == ForecastType.debtInterestOnly ? "Interest Only Loan" : "Reducing Balance",
                         style: TextStyle(color: Colors.grey[500], fontSize: 11),
                       ),
                     ],
@@ -298,7 +302,8 @@ class ForecastScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAssetCardAsList(BuildContext context, ForecastItem item, FinanceProvider provider) {
+  // UPDATED ASSET CARD TO BE CLICKABLE
+  Widget _buildAssetCard(BuildContext context, ForecastItem item, FinanceProvider provider) {
     double progress = 0;
     if (item.targetAmount > 0) {
       progress = (item.currentAmount / item.targetAmount).clamp(0.0, 1.0);
@@ -311,65 +316,38 @@ class ForecastScreen extends StatelessWidget {
           MaterialPageRoute(builder: (context) => AssetDetailScreen(item: item)),
         );
       },
+
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: const Color(0xFF1E293B),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.white.withOpacity(0.05)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Color(item.colorValue).withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                  child: Text(item.icon, style: const TextStyle(fontSize: 20)),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(item.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15)),
-                      const SizedBox(height: 4),
-                      Text(
-                        item.interestRate > 0 ? "Growing @ ${item.interestRate}%" : "Standard Savings",
-                        style: TextStyle(color: Colors.grey[500], fontSize: 11),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(provider.currencyFormat.format(item.currentAmount), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-                    Text("of ${provider.currencyFormat.format(item.targetAmount)}", style: TextStyle(color: Colors.grey[500], fontSize: 10)),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Stack(
-              children: [
-                Container(height: 6, width: double.infinity, decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(3))),
-                FractionallySizedBox(
-                  widthFactor: progress,
-                  child: Container(height: 6, decoration: BoxDecoration(color: Color(item.colorValue), borderRadius: BorderRadius.circular(3))),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("${(progress * 100).toStringAsFixed(0)}% Achieved", style: TextStyle(color: Color(item.colorValue), fontSize: 11, fontWeight: FontWeight.bold)),
-                if (item.monthlyPayment > 0)
-                  Text("Saving: ${provider.currencyFormat.format(item.monthlyPayment)}/mo", style: TextStyle(color: Colors.grey[400], fontSize: 11)),
+                Text(item.icon, style: const TextStyle(fontSize: 24)),
+                if (item.targetAmount > 0)
+                  Text("${(progress * 100).toStringAsFixed(0)}%", style: TextStyle(color: Color(item.colorValue), fontSize: 12, fontWeight: FontWeight.bold)),
               ],
+            ),
+            const Spacer(),
+            Text(item.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 4),
+            Text(provider.currencyFormat.format(item.currentAmount), style: const TextStyle(color: Colors.white70, fontSize: 13)),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: progress,
+                backgroundColor: Colors.black26,
+                color: Color(item.colorValue),
+                minHeight: 4,
+              ),
             ),
           ],
         ),
@@ -380,7 +358,7 @@ class ForecastScreen extends StatelessWidget {
   void _showAddDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AddForecastItemDialog(),
+      builder: (context) => AddForecastItemDialog(), // Removed const
     );
   }
 }
