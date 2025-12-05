@@ -1,209 +1,163 @@
 import 'package:flutter/foundation.dart';
-import '../models/transaction.dart';
-import '../models/budget.dart';
-import '../services/database_service.dart';
-import '../data/categories.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import '../models/forecast_item.dart';
+import '../models/transaction_record.dart';
+import '../models/transaction.dart'; // Exports TransactionType
+import '../models/category.dart';
+import '../models/salary_profile.dart';
 
 class FinanceProvider extends ChangeNotifier {
-  final DatabaseService _db = DatabaseService.instance;
-  
-  List<Transaction> _transactions = [];
-  List<Budget> _budgets = [];
-  DateTime _currentMonth = DateTime.now();
-  bool _isLoading = false;
+  SalaryProfile? salaryProfile;
+  List<Transaction> transactions = [];
+  List<CategoryModel> categories = [];
 
-  List<Transaction> get transactions => _transactions;
-  List<Budget> get budgets => _budgets;
-  DateTime get currentMonth => _currentMonth;
-  bool get isLoading => _isLoading;
+  List<ForecastItem> forecastItems = [];
+  List<TransactionRecord> forecastTransactions = [];
 
-  // Calculate totals
-  double get totalIncome {
-    return _transactions
-        .where((t) => t.type == TransactionType.income)
-        .fold(0.0, (sum, t) => sum + t.amount);
-  }
+  final currencyFormat = NumberFormat.currency(symbol: '₹', decimalDigits: 0, locale: 'en_IN');
 
-  double get totalExpense {
-    return _transactions
-        .where((t) => t.type == TransactionType.expense)
-        .fold(0.0, (sum, t) => sum + t.amount);
-  }
+  Future<void> loadData() async {
+    final prefs = await SharedPreferences.getInstance();
 
-  double get totalInvestment {
-    return _transactions
-        .where((t) => t.type == TransactionType.investment)
-        .fold(0.0, (sum, t) => sum + t.amount);
-  }
-
-  double get balance => totalIncome - totalExpense - totalInvestment;
-
-  // Month navigation
-  void goToPreviousMonth() {
-    _currentMonth = DateTime(
-      _currentMonth.year,
-      _currentMonth.month - 1,
-      1,
-    );
-    loadTransactionsForCurrentMonth();
-    notifyListeners();
-  }
-
-  void goToNextMonth() {
-    _currentMonth = DateTime(
-      _currentMonth.year,
-      _currentMonth.month + 1,
-      1,
-    );
-    loadTransactionsForCurrentMonth();
-    notifyListeners();
-  }
-
-  // Load transactions for current month
-  Future<void> loadTransactionsForCurrentMonth() async {
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      _transactions = await _db.getTransactionsByMonth(
-        _currentMonth.year,
-        _currentMonth.month,
-      );
-    } catch (e) {
-      debugPrint('Error loading transactions: $e');
-      _transactions = [];
+    final salaryString = prefs.getString('salary_profile');
+    if (salaryString != null) {
+      try {
+        salaryProfile = SalaryProfile.fromJson(jsonDecode(salaryString));
+      } catch (e) { debugPrint("Error loading salary: $e"); }
     }
 
-    _isLoading = false;
+    final txList = prefs.getStringList('transactions');
+    if (txList != null) {
+      transactions = txList.map((t) => Transaction.fromJson(jsonDecode(t))).toList();
+    }
+
+    final catList = prefs.getStringList('categories');
+    if (catList != null) {
+      categories = catList.map((c) => CategoryModel.fromJson(jsonDecode(c))).toList();
+    }
+
+    final forecastList = prefs.getStringList('forecast_items');
+    if (forecastList != null) {
+      forecastItems = forecastList.map((f) => ForecastItem.fromJson(jsonDecode(f))).toList();
+    }
+
+    final forecastTxList = prefs.getStringList('forecast_transactions');
+    if (forecastTxList != null) {
+      forecastTransactions = forecastTxList.map((t) => TransactionRecord.fromJson(jsonDecode(t))).toList();
+      forecastTransactions.sort((a, b) => b.date.compareTo(a.date));
+    }
+
     notifyListeners();
   }
 
-  // Load all transactions (for analysis)
-  Future<void> loadAllTransactions() async {
-    _isLoading = true;
+  Future<void> _saveData() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (salaryProfile != null) prefs.setString('salary_profile', jsonEncode(salaryProfile!.toJson()));
+    prefs.setStringList('transactions', transactions.map((t) => jsonEncode(t.toJson())).toList());
+    prefs.setStringList('categories', categories.map((c) => jsonEncode(c.toJson())).toList());
+    prefs.setStringList('forecast_items', forecastItems.map((f) => jsonEncode(f.toJson())).toList());
+    prefs.setStringList('forecast_transactions', forecastTransactions.map((t) => jsonEncode(t.toJson())).toList());
+  }
+
+  // --- APP METHODS ---
+  Future<void> updateSalaryProfile(SalaryProfile profile) async {
+    salaryProfile = profile;
     notifyListeners();
+    _saveData();
+  }
 
-    try {
-      _transactions = await _db.getAllTransactions();
-    } catch (e) {
-      debugPrint('Error loading all transactions: $e');
-      _transactions = [];
-    }
-
-    _isLoading = false;
+  void addTransaction(Transaction transaction) {
+    transactions.add(transaction);
     notifyListeners();
+    _saveData();
   }
 
-  // Transaction operations
-  Future<void> addTransaction(Transaction transaction) async {
-    try {
-      await _db.createTransaction(transaction);
-      
-      // Add to local list if it belongs to current month
-      final transactionDate = DateTime.parse(transaction.date);
-      if (transactionDate.year == _currentMonth.year &&
-          transactionDate.month == _currentMonth.month) {
-        _transactions.insert(0, transaction);
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('Error adding transaction: $e');
-      rethrow;
-    }
+  // FIXED: Comparing Enum types (TransactionType.income)
+  double get totalBalance {
+    double income = transactions.where((t) => t.type == TransactionType.income).fold(0.0, (sum, t) => sum + t.amount);
+    double expense = transactions.where((t) => t.type == TransactionType.expense).fold(0.0, (sum, t) => sum + t.amount);
+    return income - expense;
   }
 
-  Future<void> updateTransaction(Transaction transaction) async {
-    try {
-      await _db.updateTransaction(transaction);
-      
-      final index = _transactions.indexWhere((t) => t.id == transaction.id);
-      if (index != -1) {
-        _transactions[index] = transaction;
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('Error updating transaction: $e');
-      rethrow;
-    }
+  double get totalIncome => transactions.where((t) => t.type == TransactionType.income).fold(0.0, (sum, t) => sum + t.amount);
+  double get totalExpenses => transactions.where((t) => t.type == TransactionType.expense).fold(0.0, (sum, t) => sum + t.amount);
+
+  Future<void> addCategory(CategoryModel category) async {
+    categories.add(category);
+    notifyListeners();
+    _saveData();
   }
 
-  Future<void> deleteTransaction(String id) async {
-    try {
-      await _db.deleteTransaction(id);
-      _transactions.removeWhere((t) => t.id == id);
+  void updateCategory(CategoryModel category) {
+    final index = categories.indexWhere((c) => c.id == category.id);
+    if (index != -1) {
+      categories[index] = category;
       notifyListeners();
-    } catch (e) {
-      debugPrint('Error deleting transaction: $e');
-      rethrow;
+      _saveData();
     }
   }
 
-  // Budget operations
-  Future<void> loadBudgets() async {
-    try {
-      _budgets = await _db.getAllBudgets();
+  void deleteCategory(int id) {
+    categories.removeWhere((c) => c.id == id);
+    notifyListeners();
+    _saveData();
+  }
+
+  // --- FORECAST METHODS ---
+  void addForecastItem(ForecastItem item) {
+    forecastItems.add(item);
+    notifyListeners();
+    _saveData();
+  }
+
+  void deleteForecastItem(String id) {
+    forecastItems.removeWhere((item) => item.id == id);
+    notifyListeners();
+    _saveData();
+  }
+
+  void updateForecastItem(ForecastItem item) {
+    final index = forecastItems.indexWhere((i) => i.id == item.id);
+    if (index != -1) {
+      forecastItems[index] = item;
       notifyListeners();
-    } catch (e) {
-      debugPrint('Error loading budgets: $e');
-      _budgets = [];
+      _saveData();
     }
   }
 
-  Future<void> addBudget(Budget budget) async {
-    try {
-      await _db.createBudget(budget);
-      _budgets.add(budget);
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Error adding budget: $e');
-      rethrow;
-    }
+  // Using isLiability getter from ForecastItem
+  double getTotalAssets() {
+    return forecastItems
+        .where((item) => !item.isLiability)
+        .fold(0.0, (sum, item) => sum + item.currentAmount);
   }
 
-  Future<void> updateBudget(Budget budget) async {
-    try {
-      await _db.updateBudget(budget);
-      
-      final index = _budgets.indexWhere((b) => b.id == budget.id);
-      if (index != -1) {
-        _budgets[index] = budget;
-        notifyListeners();
-      }
-    } catch (e) {
-      debugPrint('Error updating budget: $e');
-      rethrow;
-    }
+  double getTotalLiabilities() {
+    return forecastItems
+        .where((item) => item.isLiability)
+        .fold(0.0, (sum, item) => sum + item.currentAmount);
   }
 
-  Future<void> deleteBudget(String id) async {
-    try {
-      await _db.deleteBudget(id);
-      _budgets.removeWhere((b) => b.id == id);
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Error deleting budget: $e');
-      rethrow;
-    }
+  double get netWorth => getTotalAssets() - getTotalLiabilities();
+  double getNetWorth() => netWorth;
+
+  // --- FORECAST TRANSACTION HISTORY ---
+  void addForecastTransaction(TransactionRecord record) {
+    forecastTransactions.add(record);
+    forecastTransactions.sort((a, b) => b.date.compareTo(a.date));
+    notifyListeners();
+    _saveData();
   }
 
-  // Category analysis
-  Map<String, double> getCategoryTotals(TransactionType type) {
-    final categoryTotals = <String, double>{};
-    
-    for (final transaction in _transactions.where((t) => t.type == type)) {
-      categoryTotals[transaction.mainCategory] = 
-          (categoryTotals[transaction.mainCategory] ?? 0) + transaction.amount;
-    }
-    
-    return categoryTotals;
+  void deleteForecastTransaction(String id) {
+    forecastTransactions.removeWhere((t) => t.id == id);
+    notifyListeners();
+    _saveData();
   }
 
-  // Get transactions for a date range
-  List<Transaction> getTransactionsInRange(DateTime start, DateTime end) {
-    return _transactions.where((t) {
-      final date = DateTime.parse(t.date);
-      return date.isAfter(start.subtract(const Duration(days: 1))) &&
-             date.isBefore(end.add(const Duration(days: 1)));
-    }).toList();
+  List<TransactionRecord> getRecentForecastTransactions(String itemId, {int limit = 10}) {
+    return forecastTransactions.where((t) => t.itemId == itemId).take(limit).toList();
   }
 }

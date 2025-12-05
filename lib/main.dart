@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'screens/home_screen.dart';
-import 'screens/tracker_screen.dart';
 import 'providers/finance_provider.dart';
-import 'providers/theme_provider.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'screens/home_screen.dart';
+import 'screens/onboarding/onboarding_flow.dart';
+import 'utils/app_theme.dart';
+import 'services/onboarding_service.dart';
 
 void main() {
-  runApp(const ClearFinanceApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => FinanceProvider(), // Don't call loadData() here immediately
+      child: const ClearFinanceApp(),
+    ),
+  );
 }
 
 class ClearFinanceApp extends StatelessWidget {
@@ -15,90 +20,70 @@ class ClearFinanceApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => FinanceProvider()),
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
-      ],
-      child: Consumer<ThemeProvider>(builder: (context, themeProvider, _) {
-        return MaterialApp(
-          title: 'Clear Finance 2.0',
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.light,
-            ),
-            textTheme: GoogleFonts.interTextTheme(),
-            useMaterial3: true,
-          ),
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.dark,
-            ),
-            textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
-            useMaterial3: true,
-          ),
-          themeMode: themeProvider.themeMode,
-          home: const MainNavigation(),
-        );
-      }),
+    return MaterialApp(
+      title: 'clear finance',
+      debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.dark,
+      darkTheme: AppTheme.darkTheme,
+      home: const _RootDecider(),
     );
   }
 }
 
-class MainNavigation extends StatefulWidget {
-  const MainNavigation({super.key});
+class _RootDecider extends StatefulWidget {
+  const _RootDecider({super.key});
 
   @override
-  State<MainNavigation> createState() => _MainNavigationState();
+  State<_RootDecider> createState() => _RootDeciderState();
 }
 
-class _MainNavigationState extends State<MainNavigation> {
-  int _selectedIndex = 0;
+class _RootDeciderState extends State<_RootDecider> {
+  bool _isLoading = true;
+  bool _hasCompletedOnboarding = false;
 
-  final List<Widget> _screens = [
-    const HomeScreen(),
-    const TrackerScreen(),
-    const Center(child: Text('Analytics - Coming Soon')),
-    const Center(child: Text('Profile - Coming Soon')),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _initApp();
+  }
+
+  Future<void> _initApp() async {
+    // 1. Load Data from Disk (Critical Step)
+    final provider = Provider.of<FinanceProvider>(context, listen: false);
+    await provider.loadData();
+
+    // 2. Check Onboarding Status
+    final service = OnboardingService();
+    final done = await service.isOnboardingComplete();
+
+    // 3. Check if critical data actually exists (Safety Check)
+    // Even if flag is true, if data is missing (e.g. cleared cache), force onboarding
+    final isDataValid = provider.salaryProfile != null;
+
+    if (mounted) {
+      setState(() {
+        // Only consider onboarding complete if flag is TRUE AND data exists
+        _hasCompletedOnboarding = done && isDataValid;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: _screens[_selectedIndex],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: 'Tracker',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.analytics_outlined),
-            selectedIcon: Icon(Icons.analytics),
-            label: 'Analytics',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-      ),
-    );
+    if (_isLoading) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0F172A), // Match app theme
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.blue),
+        ),
+      );
+    }
+
+    if (_hasCompletedOnboarding) {
+      return const HomeScreen();
+    } else {
+      return const OnboardingFlow();
+    }
   }
 }

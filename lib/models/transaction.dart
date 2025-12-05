@@ -1,75 +1,58 @@
-enum TransactionType {
-  income,
-  expense,
-  investment,
-}
+import 'package:flutter/material.dart';
+
+// Define Enum to fix UI errors
+enum TransactionType { income, expense, investment }
 
 class Transaction {
   final String id;
-  final TransactionType type;
-  final String mainCategory;
-  final String subCategory;
-  final double amount;
-  final String date; // YYYY-MM-DD format
-  final String time; // HH:MM AM/PM format
-  final String? notes;
+  final double amount; // Changed from double? to double (Safety)
+  final TransactionType type; // Changed from String to Enum (Safety)
+  final String categoryName; // Changed from String? to String (Safety)
+  final String categoryIcon;
+  final DateTime date;
+  final String? note;
 
   Transaction({
     required this.id,
-    required this.type,
-    required this.mainCategory,
-    required this.subCategory,
     required this.amount,
+    required this.type,
+    required this.categoryName,
+    this.categoryIcon = '📝',
     required this.date,
-    required this.time,
-    this.notes,
+    this.note,
   });
 
-  Map<String, dynamic> toMap() {
+  // Convert to JSON map
+  Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'type': type.index,
-      'mainCategory': mainCategory,
-      'subCategory': subCategory,
       'amount': amount,
-      'date': date,
-      'time': time,
-      'notes': notes,
+      'type': type.toString(), // Save Enum as String
+      'categoryName': categoryName,
+      'categoryIcon': categoryIcon,
+      'date': date.toIso8601String(),
+      'note': note,
     };
   }
 
-  factory Transaction.fromMap(Map<String, dynamic> map) {
-    return Transaction(
-      id: map['id'],
-      type: TransactionType.values[map['type']],
-      mainCategory: map['mainCategory'],
-      subCategory: map['subCategory'],
-      amount: map['amount'],
-      date: map['date'],
-      time: map['time'],
-      notes: map['notes'],
-    );
-  }
+  // Create from JSON map
+  factory Transaction.fromJson(Map<String, dynamic> json) {
+    // Helper to parse Enum
+    TransactionType parseType(String? str) {
+      return TransactionType.values.firstWhere(
+            (e) => e.toString() == str,
+        orElse: () => TransactionType.expense, // Default fallback
+      );
+    }
 
-  Transaction copyWith({
-    String? id,
-    TransactionType? type,
-    String? mainCategory,
-    String? subCategory,
-    double? amount,
-    String? date,
-    String? time,
-    String? notes,
-  }) {
     return Transaction(
-      id: id ?? this.id,
-      type: type ?? this.type,
-      mainCategory: mainCategory ?? this.mainCategory,
-      subCategory: subCategory ?? this.subCategory,
-      amount: amount ?? this.amount,
-      date: date ?? this.date,
-      time: time ?? this.time,
-      notes: notes ?? this.notes,
+      id: json['id'],
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      type: parseType(json['type']),
+      categoryName: json['categoryName'] ?? 'Unknown',
+      categoryIcon: json['categoryIcon'] ?? '📝',
+      date: DateTime.parse(json['date']),
+      note: json['note'],
     );
   }
 }
