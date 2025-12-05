@@ -1,61 +1,99 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
 
-enum CategoryType { income, expense, investment }
-enum CategoryNature { fixed, variable }
+enum CategoryBucket {
+  income,
+  essentials,
+  futureYou,
+  lifestyle,
+}
 
+CategoryBucket categoryBucketFromString(String? value) {
+  switch (value) {
+    case 'income':
+      return CategoryBucket.income;
+    case 'essentials':
+      return CategoryBucket.essentials;
+    case 'futureYou':
+      return CategoryBucket.futureYou;
+    case 'lifestyle':
+      return CategoryBucket.lifestyle;
+    default:
+      return CategoryBucket.lifestyle;
+  }
+}
+
+String categoryBucketToString(CategoryBucket bucket) {
+  switch (bucket) {
+    case CategoryBucket.income:
+      return 'income';
+    case CategoryBucket.essentials:
+      return 'essentials';
+    case CategoryBucket.futureYou:
+      return 'futureYou';
+    case CategoryBucket.lifestyle:
+      return 'lifestyle';
+  }
+}
+
+/// Category model used in the app.
+/// Previously known as CategoryModel; keeping that class name for compatibility.
 class CategoryModel {
-  final int? id;
+  final int id;
   final String name;
+  /// Emoji or short icon text, e.g. "🏡"
   final String icon;
-  final CategoryType type;
-  final double amount;
-  final CategoryNature nature;
-  final Color color;
+  /// Essentials / Future You / Lifestyle / Income
+  final CategoryBucket bucket;
+  /// Whether this came from the app's default seed
+  final bool isDefault;
 
   CategoryModel({
-    this.id,
+    required this.id,
     required this.name,
     required this.icon,
-    required this.type,
-    this.amount = 0.0,
-    this.nature = CategoryNature.variable,
-    this.color = Colors.blue,
+    required this.bucket,
+    this.isDefault = false,
   });
+
+  CategoryModel copyWith({
+    int? id,
+    String? name,
+    String? icon,
+    CategoryBucket? bucket,
+    bool? isDefault,
+  }) {
+    return CategoryModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      icon: icon ?? this.icon,
+      bucket: bucket ?? this.bucket,
+      isDefault: isDefault ?? this.isDefault,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
       'icon': icon,
-      'type': type.toString(),
-      'amount': amount,
-      'nature': nature.toString(),
-      'color': color.value,
+      'bucket': categoryBucketToString(bucket),
+      'isDefault': isDefault,
     };
   }
 
   factory CategoryModel.fromJson(Map<String, dynamic> json) {
-    CategoryType parseType(String str) {
-      return CategoryType.values.firstWhere(
-            (e) => e.toString() == str,
-        orElse: () => CategoryType.expense,
-      );
-    }
-    CategoryNature parseNature(String str) {
-      return CategoryNature.values.firstWhere(
-            (e) => e.toString() == str,
-        orElse: () => CategoryNature.variable,
-      );
-    }
-
     return CategoryModel(
-      id: json['id'],
-      name: json['name'],
-      icon: json['icon'],
-      type: parseType(json['type']),
-      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
-      nature: parseNature(json['nature'] ?? ''),
-      color: Color(json['color'] ?? 0xFF2196F3),
+      id: json['id'] as int,
+      name: json['name'] as String,
+      icon: json['icon'] as String? ?? '📁',
+      bucket: categoryBucketFromString(json['bucket'] as String?),
+      isDefault: json['isDefault'] as bool? ?? false,
     );
   }
+
+  // If somewhere you stored as String, these helpers can be used:
+  String toJsonString() => json.encode(toJson());
+
+  factory CategoryModel.fromJsonString(String source) =>
+      CategoryModel.fromJson(json.decode(source) as Map<String, dynamic>);
 }

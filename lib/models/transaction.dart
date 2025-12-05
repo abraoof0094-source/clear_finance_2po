@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
+import 'category.dart'; // for CategoryBucket
 
-// Define Enum to fix UI errors
+// Enum stays as you defined
 enum TransactionType { income, expense, investment }
 
 class Transaction {
-  final String id;
-  final double amount; // Changed from double? to double (Safety)
-  final TransactionType type; // Changed from String to Enum (Safety)
-  final String categoryName; // Changed from String? to String (Safety)
+  final int id;                       // was String
+  final double amount;
+  final TransactionType type;
+  final String categoryName;
   final String categoryIcon;
   final DateTime date;
   final String? note;
+  final CategoryBucket? categoryBucket; // NEW: link to your 4 buckets
 
   Transaction({
     required this.id,
@@ -20,39 +22,43 @@ class Transaction {
     this.categoryIcon = '📝',
     required this.date,
     this.note,
+    this.categoryBucket,
   });
 
-  // Convert to JSON map
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'amount': amount,
-      'type': type.toString(), // Save Enum as String
+      'type': type.toString(),               // enum as String
       'categoryName': categoryName,
       'categoryIcon': categoryIcon,
       'date': date.toIso8601String(),
       'note': note,
+      'categoryBucket': categoryBucket == null
+          ? null
+          : categoryBucketToString(categoryBucket!), // from category.dart
     };
   }
 
-  // Create from JSON map
   factory Transaction.fromJson(Map<String, dynamic> json) {
-    // Helper to parse Enum
     TransactionType parseType(String? str) {
       return TransactionType.values.firstWhere(
             (e) => e.toString() == str,
-        orElse: () => TransactionType.expense, // Default fallback
+        orElse: () => TransactionType.expense,
       );
     }
 
     return Transaction(
-      id: json['id'],
+      id: (json['id'] as int?) ?? 0, // handles old data if any
       amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
-      type: parseType(json['type']),
-      categoryName: json['categoryName'] ?? 'Unknown',
-      categoryIcon: json['categoryIcon'] ?? '📝',
-      date: DateTime.parse(json['date']),
-      note: json['note'],
+      type: parseType(json['type'] as String?),
+      categoryName: json['categoryName'] as String? ?? 'Unknown',
+      categoryIcon: json['categoryIcon'] as String? ?? '📝',
+      date: DateTime.parse(json['date'] as String),
+      note: json['note'] as String?,
+      categoryBucket: json['categoryBucket'] == null
+          ? null
+          : categoryBucketFromString(json['categoryBucket'] as String?),
     );
   }
 }

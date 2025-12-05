@@ -2,11 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+
 import '../models/forecast_item.dart';
 import '../models/transaction_record.dart';
 import '../models/transaction.dart'; // Exports TransactionType
 import '../models/category.dart';
 import '../models/salary_profile.dart';
+import '../data/default_categories.dart';
 
 class FinanceProvider extends ChangeNotifier {
   SalaryProfile? salaryProfile;
@@ -16,7 +18,11 @@ class FinanceProvider extends ChangeNotifier {
   List<ForecastItem> forecastItems = [];
   List<TransactionRecord> forecastTransactions = [];
 
-  final currencyFormat = NumberFormat.currency(symbol: '₹', decimalDigits: 0, locale: 'en_IN');
+  final currencyFormat = NumberFormat.currency(
+    symbol: '₹',
+    decimalDigits: 0,
+    locale: 'en_IN',
+  );
 
   Future<void> loadData() async {
     final prefs = await SharedPreferences.getInstance();
@@ -25,27 +31,38 @@ class FinanceProvider extends ChangeNotifier {
     if (salaryString != null) {
       try {
         salaryProfile = SalaryProfile.fromJson(jsonDecode(salaryString));
-      } catch (e) { debugPrint("Error loading salary: $e"); }
+      } catch (e) {
+        debugPrint("Error loading salary: $e");
+      }
     }
 
     final txList = prefs.getStringList('transactions');
     if (txList != null) {
-      transactions = txList.map((t) => Transaction.fromJson(jsonDecode(t))).toList();
+      transactions =
+          txList.map((t) => Transaction.fromJson(jsonDecode(t))).toList();
     }
 
     final catList = prefs.getStringList('categories');
-    if (catList != null) {
-      categories = catList.map((c) => CategoryModel.fromJson(jsonDecode(c))).toList();
+    if (catList != null && catList.isNotEmpty) {
+      categories =
+          catList.map((c) => CategoryModel.fromJson(jsonDecode(c))).toList();
+    } else {
+      // Seed defaults if no categories stored
+      categories = List<CategoryModel>.from(defaultCategories);
+      await _saveCategoriesOnly();
     }
 
     final forecastList = prefs.getStringList('forecast_items');
     if (forecastList != null) {
-      forecastItems = forecastList.map((f) => ForecastItem.fromJson(jsonDecode(f))).toList();
+      forecastItems =
+          forecastList.map((f) => ForecastItem.fromJson(jsonDecode(f))).toList();
     }
 
     final forecastTxList = prefs.getStringList('forecast_transactions');
     if (forecastTxList != null) {
-      forecastTransactions = forecastTxList.map((t) => TransactionRecord.fromJson(jsonDecode(t))).toList();
+      forecastTransactions = forecastTxList
+          .map((t) => TransactionRecord.fromJson(jsonDecode(t)))
+          .toList();
       forecastTransactions.sort((a, b) => b.date.compareTo(a.date));
     }
 
@@ -54,11 +71,34 @@ class FinanceProvider extends ChangeNotifier {
 
   Future<void> _saveData() async {
     final prefs = await SharedPreferences.getInstance();
-    if (salaryProfile != null) prefs.setString('salary_profile', jsonEncode(salaryProfile!.toJson()));
-    prefs.setStringList('transactions', transactions.map((t) => jsonEncode(t.toJson())).toList());
-    prefs.setStringList('categories', categories.map((c) => jsonEncode(c.toJson())).toList());
-    prefs.setStringList('forecast_items', forecastItems.map((f) => jsonEncode(f.toJson())).toList());
-    prefs.setStringList('forecast_transactions', forecastTransactions.map((t) => jsonEncode(t.toJson())).toList());
+    if (salaryProfile != null) {
+      prefs.setString('salary_profile', jsonEncode(salaryProfile!.toJson()));
+    }
+
+    prefs.setStringList(
+      'transactions',
+      transactions.map((t) => jsonEncode(t.toJson())).toList(),
+    );
+    prefs.setStringList(
+      'categories',
+      categories.map((c) => jsonEncode(c.toJson())).toList(),
+    );
+    prefs.setStringList(
+      'forecast_items',
+      forecastItems.map((f) => jsonEncode(f.toJson())).toList(),
+    );
+    prefs.setStringList(
+      'forecast_transactions',
+      forecastTransactions.map((t) => jsonEncode(t.toJson())).toList(),
+    );
+  }
+
+  Future<void> _saveCategoriesOnly() async {
+    final prefs = await SharedPreferences.getInstance();
+    prefs.setStringList(
+      'categories',
+      categories.map((c) => jsonEncode(c.toJson())).toList(),
+    );
   }
 
   // --- APP METHODS ---
@@ -74,15 +114,23 @@ class FinanceProvider extends ChangeNotifier {
     _saveData();
   }
 
-  // FIXED: Comparing Enum types (TransactionType.income)
   double get totalBalance {
-    double income = transactions.where((t) => t.type == TransactionType.income).fold(0.0, (sum, t) => sum + t.amount);
-    double expense = transactions.where((t) => t.type == TransactionType.expense).fold(0.0, (sum, t) => sum + t.amount);
+    double income = transactions
+        .where((t) => t.type == TransactionType.income)
+        .fold(0.0, (sum, t) => sum + t.amount);
+    double expense = transactions
+        .where((t) => t.type == TransactionType.expense)
+        .fold(0.0, (sum, t) => sum + t.amount);
     return income - expense;
   }
 
-  double get totalIncome => transactions.where((t) => t.type == TransactionType.income).fold(0.0, (sum, t) => sum + t.amount);
-  double get totalExpenses => transactions.where((t) => t.type == TransactionType.expense).fold(0.0, (sum, t) => sum + t.amount);
+  double get totalIncome => transactions
+      .where((t) => t.type == TransactionType.income)
+      .fold(0.0, (sum, t) => sum + t.amount);
+
+  double get totalExpenses => transactions
+      .where((t) => t.type == TransactionType.expense)
+      .fold(0.0, (sum, t) => sum + t.amount);
 
   Future<void> addCategory(CategoryModel category) async {
     categories.add(category);
@@ -103,6 +151,24 @@ class FinanceProvider extends ChangeNotifier {
     categories.removeWhere((c) => c.id == id);
     notifyListeners();
     _saveData();
+  }
+
+  // --- CORRECTED TRANSACTION METHODS ---
+
+  void updateTransaction(Transaction updatedTx) {
+    // Use 'transactions' (no underscore)
+    final index = transactions.indexWhere((tx) => tx.id == updatedTx.id);
+    if (index != -1) {
+      transactions[index] = updatedTx;
+      notifyListeners();
+      _saveData(); // Save changes to SharedPreferences
+    }
+  }
+
+  void deleteTransaction(int id) {
+    transactions.removeWhere((tx) => tx.id == id);
+    notifyListeners();
+    _saveData(); // Save changes
   }
 
   // --- FORECAST METHODS ---
@@ -127,7 +193,6 @@ class FinanceProvider extends ChangeNotifier {
     }
   }
 
-  // Using isLiability getter from ForecastItem
   double getTotalAssets() {
     return forecastItems
         .where((item) => !item.isLiability)
@@ -157,7 +222,13 @@ class FinanceProvider extends ChangeNotifier {
     _saveData();
   }
 
-  List<TransactionRecord> getRecentForecastTransactions(String itemId, {int limit = 10}) {
-    return forecastTransactions.where((t) => t.itemId == itemId).take(limit).toList();
+  List<TransactionRecord> getRecentForecastTransactions(
+      String itemId, {
+        int limit = 10,
+      }) {
+    return forecastTransactions
+        .where((t) => t.itemId == itemId)
+        .take(limit)
+        .toList();
   }
 }

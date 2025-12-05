@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/finance_provider.dart';
 import '../../models/forecast_item.dart';
-import '../../widgets/add_forecast_item_dialog.dart'; // Ensure this path is correct!
+import '../../widgets/add_forecast_item_dialog.dart';
 import 'liability_detail_screen.dart';
 import 'asset_detail_screen.dart';
 
@@ -45,7 +45,7 @@ class ForecastScreen extends StatelessWidget {
                             letterSpacing: -0.5,
                           ),
                         ),
-                        _buildDatePill(),
+                        _buildAddItemButton(context), // CHANGED: Date pill becomes Add Item button
                       ],
                     ),
 
@@ -116,66 +116,68 @@ class ForecastScreen extends StatelessWidget {
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
 
-            // 4. Empty State
+            // 4. Empty State (UPDATED MESSAGE)
             if (items.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(
                   child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.timeline_outlined, size: 48, color: Colors.grey[600]),
-                        const SizedBox(height: 12),
-                        const Text(
-                          "No strategy yet.",
-                          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          "Tap the + button below to add a loan or goal.",
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.timeline_outlined, size: 64, color: Colors.grey[700]),
+                      const SizedBox(height: 16),
+                      const Text(
+                        "No strategies yet.",
+                        style: TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 40),
+                        child: Text(
+                          "Tap 'Add Item' above to track your first goal or debt.",
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                          style: TextStyle(color: Colors.grey[500], fontSize: 14, height: 1.4),
                         ),
-                      ],
-                    )
+                      ),
+                    ],
+                  ),
                 ),
               ),
           ],
         ),
       ),
-
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddDialog(context),
-        backgroundColor: const Color(0xFF3B82F6),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text("Add Item"),
-      ),
+      // REMOVED: FloatingActionButton is now removed
     );
   }
 
   // --- WIDGETS ---
 
-  Widget _buildDatePill() {
-    final now = DateTime.now();
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    final dateStr = "${months[now.month - 1]} '${now.year.toString().substring(2)}";
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.calendar_today_rounded, color: Colors.grey[400], size: 14),
-          const SizedBox(width: 8),
-          Text(
-            dateStr,
-            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-        ],
+  // NEW: Add Item button (replacing date pill)
+  Widget _buildAddItemButton(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _showAddDialog(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E293B),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.add, color: Color(0xFF3B82F6), size: 16),
+            SizedBox(width: 6),
+            Text(
+              'Add Item',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -302,7 +304,6 @@ class ForecastScreen extends StatelessWidget {
     );
   }
 
-  // UPDATED ASSET CARD TO BE CLICKABLE
   Widget _buildAssetCard(BuildContext context, ForecastItem item, FinanceProvider provider) {
     double progress = 0;
     if (item.targetAmount > 0) {
@@ -316,7 +317,6 @@ class ForecastScreen extends StatelessWidget {
           MaterialPageRoute(builder: (context) => AssetDetailScreen(item: item)),
         );
       },
-
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -358,7 +358,7 @@ class ForecastScreen extends StatelessWidget {
   void _showAddDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (context) => AddForecastItemDialog(), // Removed const
+      builder: (context) => AddForecastItemDialog(),
     );
   }
 }
