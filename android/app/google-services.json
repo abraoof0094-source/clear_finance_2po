@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "124890804268",
+    "project_id": "clearfinance-52b4c",
+    "storage_bucket": "clearfinance-52b4c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:124890804268:android:b97672fa8e26584d91e189",
+        "android_client_info": {
+          "package_name": "com.ashertech.clearfinance"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBV8sRUj8OhRqvgu6IbsTQInM7iyOfDmKE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

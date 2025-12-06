@@ -1,4 +1,4 @@
-name: clear_finance_2po
+name: clearfinance
 description: A Flutter mobile finance tracking application
 publish_to: 'none'
 
@@ -10,7 +10,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
+
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  google_sign_in: ^6.2.1
+
   # UI & Icons
   cupertino_icons: ^1.0.6
   google_fonts: ^6.1.0

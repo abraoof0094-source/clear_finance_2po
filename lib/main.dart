@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart'; // <--- ADDED IMPORT
 import 'package:provider/provider.dart';
 import 'providers/finance_provider.dart';
 import 'screens/home_screen.dart';
@@ -6,7 +7,10 @@ import 'screens/onboarding/onboarding_flow.dart';
 import 'utils/app_theme.dart';
 import 'services/onboarding_service.dart';
 
-void main() {
+void main() async { // <--- CHANGED TO async
+  WidgetsFlutterBinding.ensureInitialized(); // <--- ADDED
+  await Firebase.initializeApp(); // <--- ADDED (Starts Firebase)
+
   runApp(
     ChangeNotifierProvider(
       create: (_) => FinanceProvider(), // Don't call loadData() here immediately

@@ -1,4 +1,4 @@
-package com.example.clear_finance_2po
+package com.ashertech.clearfinance
 
 import io.flutter.embedding.android.FlutterActivity
 
