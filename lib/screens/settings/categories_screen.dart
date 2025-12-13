@@ -2,14 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/finance_provider.dart';
-import '../../models/category.dart';
+import '../../models/category_model.dart';
 import '../../widgets/edit_category_sheet.dart';
+import '../../utils/currency_format.dart'; // <--- Added Import
 
 class CategoriesScreen extends StatefulWidget {
-  /// Allows jumping to a specific tab (0: Essentials, 1: Future You, 2: Lifestyle, 3: Income)
   final int initialIndex;
 
   const CategoriesScreen({super.key, this.initialIndex = 0});
+
+  static Future<CategoryModel?> addCategoryForBucket(
+      BuildContext context,
+      CategoryBucket bucket,
+      ) {
+    return showModalBottomSheet<CategoryModel>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => EditCategorySheet(
+        category: null,
+        initialBucket: bucket,
+      ),
+    );
+  }
 
   @override
   State<CategoriesScreen> createState() => _CategoriesScreenState();
@@ -23,9 +38,9 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 4,
+      length: 5,
       vsync: this,
-      initialIndex: widget.initialIndex.clamp(0, 3),
+      initialIndex: widget.initialIndex.clamp(0, 4),
     );
   }
 
@@ -38,37 +53,44 @@ class _CategoriesScreenState extends State<CategoriesScreen>
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<FinanceProvider>(context);
+    final theme = Theme.of(context);
+    final onBg = theme.colorScheme.onSurface;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: theme.scaffoldBackgroundColor,
         elevation: 0,
-        title: const Text(
+        title: Text(
           'Categories',
           style: TextStyle(
-            color: Colors.white,
+            color: onBg,
             fontWeight: FontWeight.bold,
             fontSize: 18,
           ),
         ),
+        iconTheme: IconThemeData(color: onBg),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: onBg),
           onPressed: () => Navigator.pop(context),
         ),
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: false,
           indicatorColor: const Color(0xFF3B82F6),
+          indicatorSize: TabBarIndicatorSize.tab,
           labelColor: const Color(0xFF3B82F6),
-          unselectedLabelColor: Colors.grey,
+          unselectedLabelColor: onBg.withOpacity(0.5),
           labelStyle: const TextStyle(
             fontWeight: FontWeight.bold,
-            fontSize: 13,
+            fontSize: 12,
           ),
+          labelPadding: const EdgeInsets.symmetric(horizontal: 0),
           tabs: const [
-            Tab(text: 'Essentials'),
-            Tab(text: 'Future You'),
-            Tab(text: 'Lifestyle'),
+            Tab(text: 'Expense'),
+            Tab(text: 'Invest'),
+            Tab(text: 'Liability'),
+            Tab(text: 'Goal'),
             Tab(text: 'Income'),
           ],
         ),
@@ -77,84 +99,160 @@ class _CategoriesScreenState extends State<CategoriesScreen>
         controller: _tabController,
         children: [
           _buildCategoryList(
+            context,
             provider,
-            CategoryBucket.essentials,
-            emptyText: "No essential categories yet.",
+            CategoryBucket.expense,
+            emptyText: "No expense categories yet.\nTap below to add one.",
           ),
           _buildCategoryList(
+            context,
             provider,
-            CategoryBucket.futureYou,
-            emptyText: "No Future You categories yet.",
+            CategoryBucket.invest,
+            emptyText: "No investment categories yet.\nTap below to add one.",
           ),
           _buildCategoryList(
+            context,
             provider,
-            CategoryBucket.lifestyle,
-            emptyText: "No lifestyle categories yet.",
+            CategoryBucket.liability,
+            emptyText: "No liability categories yet.\nTap below to add one.",
           ),
           _buildCategoryList(
+            context,
+            provider,
+            CategoryBucket.goal,
+            emptyText: "No goal categories yet.\nTap below to add one.",
+          ),
+          _buildCategoryList(
+            context,
             provider,
             CategoryBucket.income,
-            emptyText: "No income categories yet.",
+            emptyText: "No income categories yet.\nTap below to add one.",
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF3B82F6),
-        child: const Icon(Icons.add, color: Colors.white),
-        onPressed: () {
-          final bucket = _bucketForTabIndex(_tabController.index);
-          _showEditSheet(context, null, bucket);
-        },
       ),
     );
   }
 
-  CategoryBucket _bucketForTabIndex(int index) {
-    switch (index) {
-      case 0:
-        return CategoryBucket.essentials;
-      case 1:
-        return CategoryBucket.futureYou;
-      case 2:
-        return CategoryBucket.lifestyle;
-      case 3:
-      default:
-        return CategoryBucket.income;
-    }
-  }
-
   Widget _buildCategoryList(
+      BuildContext context,
       FinanceProvider provider,
       CategoryBucket bucket, {
         required String emptyText,
       }) {
+    final theme = Theme.of(context);
+    final onBg = theme.colorScheme.onSurface;
+    final cardColor = theme.cardColor;
+
+    // "surfaceContainerHighest" is new in Flutter 3.22+, adding fallback for older versions
+    Color tileBg;
+    try {
+      tileBg = theme.colorScheme.surfaceContainerHighest;
+    } catch (_) {
+      tileBg = theme.colorScheme.surface.withOpacity(0.08); // Fallback
+    }
+
+    tileBg = tileBg.withOpacity(
+      theme.brightness == Brightness.dark ? 0.5 : 1,
+    );
+
     final categories =
     provider.categories.where((c) => c.bucket == bucket).toList();
 
+    Widget buildAddNewTile() {
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: GestureDetector(
+                  onTap: () => _showEditSheet(context, null, bucket),
+                  child: Container(
+                    width: 180,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: onBg.withOpacity(0.08),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.add,
+                          color: Color(0xFF3B82F6),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          "New Category",
+                          style: TextStyle(
+                            color: onBg,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (categories.isEmpty) {
-      return Center(
-        child: Text(
-          emptyText,
-          style: TextStyle(color: Colors.grey[600]),
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _iconForBucket(bucket),
+              size: 64,
+              color: onBg.withOpacity(0.12),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              emptyText,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: onBg.withOpacity(0.6),
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 24),
+            buildAddNewTile(),
+          ],
         ),
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.all(20),
-      itemCount: categories.length,
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 80),
+      itemCount: categories.length + 1,
       itemBuilder: (context, index) {
-        final cat = categories[index];
+        if (index == categories.length) {
+          return buildAddNewTile();
+        }
 
-        final isPlannedBucket = bucket == CategoryBucket.essentials ||
-            bucket == CategoryBucket.futureYou;
+        final cat = categories[index];
 
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E293B),
+            color: tileBg,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.05)),
+            border: Border.all(color: onBg.withOpacity(0.05)),
           ),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(
@@ -162,36 +260,89 @@ class _CategoriesScreenState extends State<CategoriesScreen>
               vertical: 8,
             ),
             leading: Container(
-              width: 40,
-              height: 40,
+              width: 48,
+              height: 48,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(10),
+                color: theme.scaffoldBackgroundColor,
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Text(cat.icon, style: const TextStyle(fontSize: 20)),
+              child: Text(
+                cat.icon,
+                style: const TextStyle(fontSize: 24),
+              ),
             ),
             title: Text(
               cat.name,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: onBg,
                 fontWeight: FontWeight.w600,
                 fontSize: 15,
               ),
             ),
-            subtitle: Text(
-              _subtitleForBucket(bucket, isPlannedBucket),
-              style: TextStyle(
-                color: isPlannedBucket
-                    ? const Color(0xFF3B82F6)
-                    : Colors.grey,
-                fontSize: 12,
-              ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _colorForBucket(bucket).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          _labelForBucket(bucket),
+                          style: TextStyle(
+                            color: _colorForBucket(bucket),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (cat.isDefault) ...[
+                        const SizedBox(width: 8),
+                        Icon(
+                          Icons.verified,
+                          size: 14,
+                          color: onBg.withOpacity(0.5),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (cat.isMandate && cat.monthlyMandate != null) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '${CurrencyFormat.format(context, cat.monthlyMandate!)} / month',
+                      style: const TextStyle(
+                        color: Color(0xFF10B981),
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
-            trailing: const Icon(
+            trailing: Icon(
               Icons.chevron_right,
-              color: Colors.grey,
-              size: 18,
+              color: onBg.withOpacity(0.4),
+              size: 20,
             ),
             onTap: () => _showEditSheet(context, cat, bucket),
           ),
@@ -200,33 +351,64 @@ class _CategoriesScreenState extends State<CategoriesScreen>
     );
   }
 
-  String _subtitleForBucket(
-      CategoryBucket bucket,
-      bool isPlannedBucket,
-      ) {
+  IconData _iconForBucket(CategoryBucket bucket) {
     switch (bucket) {
-      case CategoryBucket.essentials:
-        return "Monthly essentials (protected)";
-      case CategoryBucket.futureYou:
-        return "Future-you money (investments & goals)";
-      case CategoryBucket.lifestyle:
-        return "Flexible / lifestyle spending";
+      case CategoryBucket.expense:
+        return Icons.receipt_long_outlined;
+      case CategoryBucket.invest:
+        return Icons.trending_up;
+      case CategoryBucket.liability:
+        return Icons.account_balance_outlined;
+      case CategoryBucket.goal:
+        return Icons.flag_outlined;
       case CategoryBucket.income:
-        return "Sources of income";
+        return Icons.account_balance_wallet_outlined;
     }
   }
 
-  void _showEditSheet(
+  Color _colorForBucket(CategoryBucket bucket) {
+    switch (bucket) {
+      case CategoryBucket.expense:
+        return const Color(0xFFEF4444);
+      case CategoryBucket.invest:
+        return const Color(0xFF10B981);
+      case CategoryBucket.liability:
+        return const Color(0xFF8B5CF6);
+      case CategoryBucket.goal:
+        return const Color(0xFFF59E0B);
+      case CategoryBucket.income:
+        return const Color(0xFF3B82F6);
+    }
+  }
+
+  String _labelForBucket(CategoryBucket bucket) {
+    switch (bucket) {
+      case CategoryBucket.expense:
+        return 'EXPENSE';
+      case CategoryBucket.invest:
+        return 'INVEST';
+      case CategoryBucket.liability:
+        return 'LIABILITY';
+      case CategoryBucket.goal:
+        return 'GOAL';
+      case CategoryBucket.income:
+        return 'INCOME';
+    }
+  }
+
+  Future<CategoryModel?> _showEditSheet(
       BuildContext context,
       CategoryModel? category,
       CategoryBucket bucket,
       ) {
-    showModalBottomSheet(
+    return showModalBottomSheet<CategoryModel>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) =>
-          EditCategorySheet(category: category, initialBucket: bucket),
+      builder: (context) => EditCategorySheet(
+        category: category,
+        initialBucket: bucket,
+      ),
     );
   }
 }

@@ -1,12 +1,16 @@
+import 'dart:math';
+import 'dart:ui'; // For ImageFilter
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'dart:math';
 
 import '../../models/forecast_item.dart';
-import '../../models/transaction_record.dart';
+import '../../models/transaction_model.dart';
+import '../../models/category_model.dart';
 import '../../providers/finance_provider.dart';
 import '../../widgets/add_forecast_item_dialog.dart';
+import '../../utils/currency_format.dart';
 
 class LiabilityDetailScreen extends StatefulWidget {
   final ForecastItem item;
@@ -14,590 +18,420 @@ class LiabilityDetailScreen extends StatefulWidget {
   const LiabilityDetailScreen({super.key, required this.item});
 
   @override
-  State<LiabilityDetailScreen> createState() =>
-      _LiabilityDetailScreenState();
+  State<LiabilityDetailScreen> createState() => _LiabilityDetailScreenState();
 }
 
 class _LiabilityDetailScreenState extends State<LiabilityDetailScreen> {
-  double _extraMonthlyPayment = 0;
+  double _plannerMonthlyPayment = 0;
 
   @override
   void initState() {
     super.initState();
-    if (widget.item.monthlyPayment > 0) {
-      _extraMonthlyPayment = widget.item.monthlyPayment;
-    } else {
-      _extraMonthlyPayment = 1000;
-    }
+    final monthlyInterest = (widget.item.currentOutstanding * (widget.item.interestRate / 100)) / 12;
+    // Fix: Ensure we divide by 100 before ceiling, then multiply back
+    double startValue = max(widget.item.monthlyEmiOrContribution, monthlyInterest);
+    _plannerMonthlyPayment = (startValue / 100).ceil() * 100.0;
   }
 
-  String _formatDuration(DateTime endDate) {
-    final now = DateTime.now();
-    final monthsDiff =
-        (endDate.year - now.year) * 12 + endDate.month - now.month;
-    if (monthsDiff <= 0) return "This Month!";
-    if (monthsDiff < 12) return "in $monthsDiff months";
-    final years = monthsDiff ~/ 12;
-    final months = monthsDiff % 12;
-    if (months == 0) return "in $years years";
-    return "in $years yr $months mo";
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final provider = Provider.of<FinanceProvider>(context);
-
-    ForecastItem item;
+  int _calculateMonthsToPayOff(double totalDebt, double monthlyRate, double monthlyPayment) {
+    if (monthlyPayment <= (totalDebt * monthlyRate)) return 999;
     try {
-      item =
-          provider.forecastItems.firstWhere((i) => i.id == widget.item.id);
-    } catch (e) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      final numerator = -log(1 - (monthlyRate * totalDebt) / monthlyPayment);
+      final denominator = log(1 + monthlyRate);
+      return (numerator / denominator).ceil();
+    } catch (_) {
+      return 999;
     }
-
-    final currency = provider.currencyFormat;
-
-    DateTime? debtFreeDate;
-    int monthsToFreedom = 0;
-    double remainingBalance = item.currentAmount;
-    const int maxMonths = 600;
-
-    if (_extraMonthlyPayment > 0 && item.currentAmount > 0) {
-      final monthlyRate = (item.interestRate / 100) / 12;
-
-      while (remainingBalance > 0 && monthsToFreedom < maxMonths) {
-        final interestCharge = remainingBalance * monthlyRate;
-        final principalPayment = _extraMonthlyPayment - interestCharge;
-        if (principalPayment <= 0) break;
-        remainingBalance -= principalPayment;
-        monthsToFreedom++;
-      }
-
-      if (monthsToFreedom < maxMonths && remainingBalance <= 0) {
-        final now = DateTime.now();
-        debtFreeDate =
-            DateTime(now.year, now.month + monthsToFreedom, now.day);
-      }
-    }
-
-    double progress = 0.0;
-    if (item.targetAmount > 0) {
-      progress = (1.0 - (item.currentAmount / item.targetAmount))
-          .clamp(0.0, 1.0);
-    }
-
-    double sliderMax = max(item.currentAmount / 10, 100000);
-    if (_extraMonthlyPayment > sliderMax) {
-      sliderMax = _extraMonthlyPayment * 1.2;
-    }
-
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Text(
-          item.name,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_rounded, color: Colors.white70),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (ctx) =>
-                    AddForecastItemDialog(itemToEdit: item),
-              ).then((_) => setState(() {}));
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding:
-          const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-          child: Column(
-            children: [
-              // HERO CARD
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFF43F5E), Color(0xFFE11D48)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.red.withOpacity(0.3),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      "Outstanding Balance",
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      currency.format(item.currentAmount),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 8,
-                        backgroundColor: Colors.black26,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "${(progress * 100).toStringAsFixed(0)}% Paid Off",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // PAYOFF PLANNER
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      "Monthly Payment",
-                      style: TextStyle(
-                        color: Colors.grey[400],
-                        fontSize: 13,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          currency.format(_extraMonthlyPayment),
-                          style: const TextStyle(
-                            color: Colors.redAccent,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          "@ ${item.interestRate}% Interest",
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                    SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        activeTrackColor: Colors.redAccent,
-                        thumbColor: Colors.white,
-                        inactiveTrackColor: Colors.white10,
-                        trackHeight: 4.0,
-                      ),
-                      child: Slider(
-                        value:
-                        _extraMonthlyPayment.clamp(0.0, sliderMax),
-                        min: 0,
-                        max: sliderMax,
-                        divisions: 200,
-                        onChanged: (val) => setState(
-                              () => _extraMonthlyPayment = val,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // DEBT FREE DATE CARD
-              if (debtFreeDate != null)
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: Colors.redAccent.withOpacity(0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.check_circle_rounded,
-                        color: Colors.redAccent,
-                        size: 28,
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              "Debt Free By",
-                              style: TextStyle(
-                                color: Colors.redAccent,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.baseline,
-                              textBaseline: TextBaseline.alphabetic,
-                              children: [
-                                Text(
-                                  _formatDuration(debtFreeDate),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  "(${DateFormat('MMM yyyy').format(debtFreeDate)})",
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.5),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Center(
-                    child: Text(
-                      "Increase payment to see payoff date",
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                ),
-
-              const SizedBox(height: 24),
-
-              // TRANSACTION HISTORY (COLLAPSIBLE)
-              Theme(
-                data: Theme.of(context)
-                    .copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  title: const Text(
-                    "Recent Payments",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  initiallyExpanded: false,
-                  iconColor: Colors.white,
-                  collapsedIconColor: Colors.grey,
-                  children: [
-                    Consumer<FinanceProvider>(
-                      builder: (ctx, prov, _) {
-                        final history =
-                        prov.getRecentForecastTransactions(item.id,
-                            limit: 10);
-                        if (history.isEmpty) {
-                          return const Padding(
-                            padding: EdgeInsets.only(bottom: 20),
-                            child: Text(
-                              "No payments yet",
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          );
-                        }
-                        return Column(
-                          children: history
-                              .map(
-                                (tx) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF1E293B),
-                                  borderRadius:
-                                  BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: Colors.redAccent
-                                        .withOpacity(0.2),
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            "-${prov.currencyFormat.format(tx.amount)}",
-                                            style: const TextStyle(
-                                              color: Colors.redAccent,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          Text(
-                                            DateFormat('dd MMM yyyy')
-                                                .format(tx.date),
-                                            style: const TextStyle(
-                                              color: Colors.grey,
-                                              fontSize: 12,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(
-                                        Icons.delete_outline,
-                                        color: Colors.white38,
-                                      ),
-                                      onPressed: () {
-                                        final newItem = ForecastItem(
-                                          id: item.id,
-                                          name: item.name,
-                                          icon: item.icon,
-                                          type: item.type,
-                                          currentAmount:
-                                          item.currentAmount +
-                                              tx.amount,
-                                          targetAmount:
-                                          item.targetAmount,
-                                          interestRate:
-                                          item.interestRate,
-                                          monthlyPayment:
-                                          item.monthlyPayment,
-                                          colorValue: item.colorValue,
-                                        );
-                                        provider
-                                            .updateForecastItem(newItem);
-                                        provider.deleteForecastTransaction(
-                                            tx.id);
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          )
-                              .toList(),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              // BUTTONS (no delete here; delete will live in edit dialog)
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFEF4444),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 4,
-                    shadowColor: Colors.red.withOpacity(0.4),
-                  ),
-                  onPressed: () =>
-                      _showMakePaymentDialog(context, item, provider),
-                  icon: const Icon(Icons.payment_rounded,
-                      color: Colors.white),
-                  label: const Text(
-                    "Make Payment",
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 120),
-            ],
-          ),
-        ),
-      ),
-    );
   }
 
-  void _showMakePaymentDialog(
-      BuildContext context,
-      ForecastItem item,
-      FinanceProvider provider,
-      ) {
-    final controller = TextEditingController();
+  String _formatMonthsToText(int months) {
+    if (months >= 999) return "Never (Increase Amount)";
+    if (months <= 0) return "1 Month";
+    final years = months ~/ 12;
+    final remainingMonths = months % 12;
+    if (years == 0) return "$remainingMonths Months";
+    if (remainingMonths == 0) return "$years Years";
+    return "$years Yr $remainingMonths Mo";
+  }
+
+  void _showHelpDialog(BuildContext context, bool isInterestOnly) {
+    final theme = Theme.of(context);
+    final onBg = theme.colorScheme.onSurface;
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: Text(
-          "Pay ${item.name}",
-          style: const TextStyle(color: Colors.white),
-        ),
+        backgroundColor: theme.cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        title: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), shape: BoxShape.circle),
+            child: const Icon(Icons.info_outline_rounded, color: Colors.blue),
+          ),
+          const SizedBox(width: 14),
+          Text("How this works", style: TextStyle(fontWeight: FontWeight.bold, color: onBg, fontSize: 20)),
+        ]),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "How much principal did you pay?",
-              style: TextStyle(color: Colors.grey, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              autofocus: true,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+            if (isInterestOnly) ...[
+              Text("Interest-Only Strategy", style: TextStyle(color: onBg, fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              Text(
+                "Your payments are split automatically. Small payments cover interest first; larger payments reduce your principal.",
+                style: TextStyle(color: onBg.withOpacity(0.7), fontSize: 14, height: 1.5),
               ),
-              textAlign: TextAlign.center,
-              decoration: InputDecoration(
-                prefixText: "₹",
-                prefixStyle: const TextStyle(
-                  color: Colors.white54,
-                  fontSize: 24,
-                ),
-                hintText: "Enter amount",
-                hintStyle: TextStyle(color: Colors.grey[600]),
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(
-                    color: Colors.redAccent.withOpacity(0.5),
-                  ),
-                ),
-                focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(
-                    color: Colors.redAccent,
-                    width: 2,
-                  ),
-                ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                child: Row(children: [
+                  const Icon(Icons.calculate_outlined, color: Colors.purple, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text("Use the planner to simulate how different monthly payments affect your payoff date.", style: TextStyle(color: Colors.purple[300], fontSize: 12, fontWeight: FontWeight.bold))),
+                ]),
               ),
-            ),
+            ] else ...[
+              Text("Standard Loan", style: TextStyle(color: onBg, fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 8),
+              Text("Use the slider to plan extra repayments and see your debt-free date accelerate.", style: TextStyle(color: onBg.withOpacity(0.7), fontSize: 14, height: 1.5)),
+            ],
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              "Cancel",
-              style: TextStyle(color: Colors.white54),
-            ),
-          ),
-          TextButton(
-            onPressed: () {
-              final amount = double.tryParse(controller.text) ?? 0;
-              if (amount <= 0) return;
-              if (amount > item.currentAmount) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      "Cannot pay more than outstanding amount!",
-                    ),
-                  ),
-                );
-                return;
-              }
-
-              final newItem = ForecastItem(
-                id: item.id,
-                name: item.name,
-                icon: item.icon,
-                type: item.type,
-                currentAmount: item.currentAmount - amount,
-                targetAmount: item.targetAmount,
-                interestRate: item.interestRate,
-                monthlyPayment: item.monthlyPayment,
-                colorValue: item.colorValue,
-              );
-
-              provider.updateForecastItem(newItem);
-
-              final transaction = TransactionRecord(
-                id: DateTime.now()
-                    .millisecondsSinceEpoch
-                    .toString(),
-                itemId: item.id,
-                itemName: item.name,
-                amount: amount,
-                date: DateTime.now(),
-                type: 'payment',
-              );
-              provider.addForecastTransaction(transaction);
-
-              Navigator.pop(ctx);
-            },
-            child: const Text(
-              "Confirm",
-              style: TextStyle(
-                color: Colors.redAccent,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
+            style: TextButton.styleFrom(foregroundColor: Colors.blue, textStyle: const TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text("Got it"),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildGlassStatBox(BuildContext context, String label, String value, Color tint) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.circle, size: 8, color: tint),
+              const SizedBox(width: 6),
+              Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = Provider.of<FinanceProvider>(context);
+    final theme = Theme.of(context);
+    final onBg = theme.colorScheme.onSurface;
+
+    late final ForecastItem item;
+    try {
+      item = provider.forecastItems.firstWhere((i) => i.id == widget.item.id);
+    } catch (_) {
+      Future.microtask(() => mounted ? Navigator.of(context).pop() : null);
+      return const Scaffold(body: Center(child: Text("Item not found.")));
+    }
+
+    final bool hasInterest = item.interestRate > 0;
+
+    // Core Data
+    final double monthlyInterestRate = (item.interestRate / 100) / 12;
+    final double approxInterest = item.currentOutstanding * monthlyInterestRate;
+
+    // Real Split Logic
+    final recentPayments = _getRecentPayments(provider, item);
+    final now = DateTime.now();
+    double totalPaidThisMonth = recentPayments
+        .where((tx) => tx.date.year == now.year && tx.date.month == now.month)
+        .fold(0.0, (sum, tx) => sum + tx.amount);
+
+    double interestPaidReal = 0.0;
+    double principalPaidReal = 0.0;
+
+    if (totalPaidThisMonth > 0) {
+      double toleranceCap = approxInterest * 1.2;
+      if (totalPaidThisMonth <= toleranceCap) {
+        interestPaidReal = totalPaidThisMonth;
+        principalPaidReal = 0;
+      } else {
+        interestPaidReal = approxInterest;
+        principalPaidReal = totalPaidThisMonth - approxInterest;
+      }
+    }
+
+    // ─── FIXED SLIDER LOGIC ───
+    // 1. Min: Approx Interest (Rounded Up to nearest 100)
+    // BUG FIX: Added (/ 100) inside the ceil() logic.
+    final double rawMin = approxInterest > 100 ? approxInterest : 100.0;
+    final double plannerMin = (rawMin / 100).ceil() * 100.0;
+
+    // 2. Max: 50% of Outstanding (Rounded Down to nearest 100), but at least Min + 5000
+    double calculatedMax = (item.currentOutstanding * 0.5 / 100).floor() * 100.0;
+    if (calculatedMax < plannerMin + 5000) calculatedMax = plannerMin + 5000;
+    final double plannerMax = calculatedMax;
+
+    // 3. Ensure slider state is valid
+    if (_plannerMonthlyPayment < plannerMin) _plannerMonthlyPayment = plannerMin;
+    if (_plannerMonthlyPayment > plannerMax) _plannerMonthlyPayment = plannerMax;
+
+    // 4. Divisions: Ensure exactly 1 step per 100 units
+    final int divisions = max(1, (plannerMax - plannerMin) ~/ 100);
+
+    final int projectedMonths = _calculateMonthsToPayOff(item.currentOutstanding, monthlyInterestRate, _plannerMonthlyPayment);
+    final DateTime? projectedDate = projectedMonths < 999 ? DateTime(now.year, now.month + projectedMonths, now.day) : null;
+    final double progress = item.targetAmount > 0 ? (item.targetAmount - item.currentOutstanding) / item.targetAmount : 0.0;
+
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: IconThemeData(color: onBg),
+        title: Text(item.name, style: TextStyle(fontWeight: FontWeight.bold, color: onBg)),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.help_outline_rounded, color: onBg.withOpacity(0.7)),
+            onPressed: () => _showHelpDialog(context, hasInterest),
+          ),
+          IconButton(
+            icon: Icon(Icons.edit_rounded, color: onBg.withOpacity(0.7)),
+            onPressed: () => showDialog(context: context, builder: (ctx) => AddForecastItemDialog(itemToEdit: item)),
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
+        child: Column(
+          children: [
+            // ─── COMPACT HERO CARD ───
+            Card(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+              elevation: 8,
+              shadowColor: const Color(0xFFEF4444).withOpacity(0.4),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  gradient: const LinearGradient(
+                      colors: [Color(0xFFEF4444), Color(0xFFB91C1C)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    const Text("Outstanding Principal", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+                    const SizedBox(height: 4),
+                    Text(
+                      CurrencyFormat.format(context, item.currentOutstanding),
+                      style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -1, shadows: [Shadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))]),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Reference Line (Compact)
+                    if (hasInterest)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.flag_rounded, color: Color(0xFFFCD34D), size: 14),
+                            const SizedBox(width: 6),
+                            Text(
+                              "Approx. Monthly Interest: ${CurrencyFormat.format(context, approxInterest)}",
+                              style: const TextStyle(color: Color(0xFFFCD34D), fontWeight: FontWeight.w600, fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // Progress Bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 6,
+                        backgroundColor: Colors.black12,
+                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF34D399)),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Glass Stats (Compact)
+                    if (hasInterest)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildGlassStatBox(
+                              context,
+                              "Interest Paid",
+                              CurrencyFormat.format(context, interestPaidReal),
+                              const Color(0xFFFCD34D),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _buildGlassStatBox(
+                              context,
+                              "Principal Paid",
+                              CurrencyFormat.format(context, principalPaidReal),
+                              const Color(0xFF34D399),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // ─── REPAYMENT PLANNER ───
+            Card(
+              elevation: 2,
+              shadowColor: Colors.black.withOpacity(0.1),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(color: theme.colorScheme.primary.withOpacity(0.1), shape: BoxShape.circle),
+                          child: Icon(Icons.tune_rounded, size: 16, color: theme.colorScheme.primary),
+                        ),
+                        const SizedBox(width: 12),
+                        const Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text("Repayment Planner", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                            Text("Simulate monthly impact", style: TextStyle(color: Colors.grey, fontSize: 11)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Slider Value
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                            CurrencyFormat.format(context, _plannerMonthlyPayment),
+                            style: TextStyle(color: theme.colorScheme.primary, fontSize: 24, fontWeight: FontWeight.w800)
+                        ),
+                        const Text("per month", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      ],
+                    ),
+
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: theme.colorScheme.primary,
+                        thumbColor: theme.colorScheme.primary,
+                        trackHeight: 4,
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                        overlayColor: theme.colorScheme.primary.withOpacity(0.1),
+                      ),
+                      child: Slider(
+                        value: _plannerMonthlyPayment.clamp(plannerMin, plannerMax),
+                        min: plannerMin,
+                        max: plannerMax,
+                        divisions: divisions,
+                        onChanged: (val) {
+                          final snapped = (val / 100).round() * 100.0;
+                          setState(() => _plannerMonthlyPayment = snapped);
+                        },
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Result Box
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: projectedDate != null ? const Color(0xFF10B981).withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(projectedDate != null ? Icons.verified_rounded : Icons.warning_amber_rounded, color: projectedDate != null ? const Color(0xFF10B981) : Colors.orange, size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: projectedDate != null
+                                ? Text.rich(TextSpan(
+                                style: TextStyle(color: onBg, fontSize: 12),
+                                children: [
+                                  const TextSpan(text: "Debt free in "),
+                                  TextSpan(text: _formatMonthsToText(projectedMonths), style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  TextSpan(text: " (${DateFormat('MMM yyyy').format(projectedDate)})", style: TextStyle(color: onBg.withOpacity(0.5), fontSize: 11)),
+                                ]
+                            ))
+                                : const Text("Amount covers interest only", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // History
+            ExpansionTile(
+              title: const Text("History", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              tilePadding: const EdgeInsets.symmetric(horizontal: 4),
+              children: recentPayments.isEmpty
+                  ? [const ListTile(title: Center(child: Text("No payments yet", style: TextStyle(color: Colors.grey))))]
+                  : recentPayments.map((tx) => ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.grey.withOpacity(0.1), shape: BoxShape.circle),
+                  child: const Icon(Icons.receipt_long, color: Colors.grey, size: 16),
+                ),
+                title: Text(DateFormat('dd MMM yyyy').format(tx.date), style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+                trailing: Text("-${CurrencyFormat.format(context, tx.amount)}", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
+              )).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<TransactionModel> _getRecentPayments(FinanceProvider provider, ForecastItem item, {int limit = 5}) {
+    if (item.categoryId == null) return [];
+    final txs = provider.transactions.where((t) => t.categoryId == item.categoryId).toList()..sort((a, b) => b.date.compareTo(a.date));
+    return txs.length > limit ? txs.sublist(0, limit) : txs;
   }
 }

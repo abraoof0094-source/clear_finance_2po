@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
+
 import '../models/forecast_item.dart';
 import '../providers/finance_provider.dart';
+import '../providers/preferences_provider.dart';
 
 class AddForecastItemDialog extends StatefulWidget {
   final ForecastItem? itemToEdit;
@@ -17,17 +19,16 @@ class _AddForecastItemDialogState extends State<AddForecastItemDialog> {
   final _formKey = GlobalKey<FormState>();
 
   final _nameController = TextEditingController();
-  final _amountController = TextEditingController(); // Outstanding / Current Saved
-  final _originalAmountController = TextEditingController(); // Original Loan
+  final _amountController = TextEditingController();
+  final _originalAmountController = TextEditingController();
   final _rateController = TextEditingController();
-  final _paymentController = TextEditingController(); // EMI / Repayment / Saving
-  final _targetController = TextEditingController(); // Goal Target
+  final _paymentController = TextEditingController();
+  final _targetController = TextEditingController();
+  final _billingDayController = TextEditingController();
 
-  ForecastType _selectedType = ForecastType.debtMelting;
+  ForecastType _selectedType = ForecastType.emiAmortized;
   String _selectedIcon = "🏠";
   Color _selectedColor = const Color(0xFFEF4444);
-
-  // Toggle for "Has Interest/Growth"
   bool _hasInterestOrGrowth = false;
 
   @override
@@ -36,11 +37,12 @@ class _AddForecastItemDialogState extends State<AddForecastItemDialog> {
     if (widget.itemToEdit != null) {
       final item = widget.itemToEdit!;
       _nameController.text = item.name;
-      _amountController.text = item.currentAmount.toStringAsFixed(0);
+      _amountController.text = item.currentOutstanding.toStringAsFixed(0);
       _rateController.text = item.interestRate.toString();
+      _billingDayController.text = item.billingDay.toString();
 
-      if (item.monthlyPayment > 0) {
-        _paymentController.text = item.monthlyPayment.toStringAsFixed(0);
+      if (item.monthlyEmiOrContribution > 0) {
+        _paymentController.text = item.monthlyEmiOrContribution.toStringAsFixed(0);
       }
 
       if (item.isLiability) {
@@ -52,268 +54,293 @@ class _AddForecastItemDialogState extends State<AddForecastItemDialog> {
       _selectedType = item.type;
       _selectedIcon = item.icon;
       _selectedColor = Color(item.colorValue);
-
-      // Logic for Toggle (Interest for Debt OR Growth for Asset)
-      if (item.type == ForecastType.debtSimple || item.type == ForecastType.goalTarget) {
-        _hasInterestOrGrowth = item.interestRate > 0;
-      } else {
-        _hasInterestOrGrowth = true; // Always true for Loans/Gold
-      }
+      _hasInterestOrGrowth = item.interestRate > 0;
     } else {
-      _hasInterestOrGrowth = false; // Default off for Personal/Goal
+      // Default: Amortized loan implies interest
+      _hasInterestOrGrowth = true;
+      _billingDayController.text = '1';
     }
   }
 
   @override
+  void dispose() {
+    _nameController.dispose();
+    _amountController.dispose();
+    _originalAmountController.dispose();
+    _rateController.dispose();
+    _paymentController.dispose();
+    _targetController.dispose();
+    _billingDayController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isLiability = _selectedType.index <= 2;
+    final theme = Theme.of(context);
+    final onBg = theme.colorScheme.onSurface;
     final isEditMode = widget.itemToEdit != null;
+
+    final isLiability = _selectedType.index <= 2;
     final isGoal = _selectedType == ForecastType.goalTarget;
     final isPersonalDebt = _selectedType == ForecastType.debtSimple;
+    final isInterestOnly = _selectedType == ForecastType.emiInterestOnly;
+    final isAmortized = _selectedType == ForecastType.emiAmortized;
 
-    // --- DYNAMIC LABELS ---
-    String paymentLabel = "Monthly EMI (₹)";
-    if (isPersonalDebt) paymentLabel = "Monthly Repayment (₹)";
-    if (isGoal) paymentLabel = "Monthly Saving (₹)";
+    // ─── VISIBILITY LOGIC ───
+    final bool showInterestToggle = isPersonalDebt || isGoal;
+    final bool showRate = _hasInterestOrGrowth || isAmortized || isInterestOnly;
+    final bool showPayment = isAmortized;
+    final bool showBillingDate = isAmortized ||
+        isInterestOnly ||
+        (isPersonalDebt && _hasInterestOrGrowth) ||
+        (isGoal && _hasInterestOrGrowth);
 
-    String rateLabel = "Interest Rate (%)";
-    if (isGoal) rateLabel = "Expected Return (% p.a.)";
+    // If both rate and date are shown, we can put them in one row.
+    // If only one is shown, it takes full width (or half if payment is also there).
+    // Payment is only for Amortized, where both rate and date are also shown.
 
-    // --- VISIBILITY LOGIC ---
-    // Show Rate if: EMI/Gold (Always) OR Personal/Goal (Only if Toggle ON)
-    bool showRate = _selectedType == ForecastType.debtMelting ||
-        _selectedType == ForecastType.debtInterestOnly ||
-        ((isPersonalDebt || isGoal) && _hasInterestOrGrowth);
-
-    // Show Payment: Hide for Gold Loan
-    bool showPayment = _selectedType != ForecastType.debtInterestOnly;
-
-    // Required? Only for EMI Loan
-    bool isPaymentRequired = _selectedType == ForecastType.debtMelting;
+    final prefs = context.watch<PreferencesProvider>();
+    final symbol = prefs.currencySymbol;
 
     return Dialog(
-      backgroundColor: const Color(0xFF1E293B),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      insetPadding: const EdgeInsets.all(20),
-      child: Container(
-        constraints: const BoxConstraints(maxHeight: 650),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // KEYBOARD SCROLL WRAPPER
-            Flexible(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Padding(
-                  padding: EdgeInsets.only(
-                      left: 24,
-                      right: 24,
-                      top: 24,
-                      bottom: 24 + MediaQuery.of(context).viewInsets.bottom
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Material(
+          color: theme.cardColor,
+          child: Column(
+            mainAxisSize: MainAxisSize.min, // Hug Content
+            children: [
+              // ─── HEADER ───
+              AppBar(
+                automaticallyImplyLeading: false,
+                elevation: 0,
+                backgroundColor: theme.cardColor,
+                title: Text(
+                  isEditMode ? 'Edit Plan' : 'Add Plan',
+                  style: TextStyle(color: onBg, fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                actions: [
+                  if (isEditMode)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                      onPressed: _confirmDelete,
+                    ),
+                  IconButton(
+                    icon: Icon(Icons.close, color: onBg.withOpacity(0.6)),
+                    onPressed: () => Navigator.pop(context),
                   ),
+                ],
+              ),
+
+              // ─── SCROLLABLE FORM ───
+              Flexible(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                   child: Form(
                     key: _formKey,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(isEditMode ? "Edit Strategy" : "Add Strategy", style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 24),
-
-                        // TYPE SELECTOR
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: [
-                              _buildTypeChip("EMI Loan", ForecastType.debtMelting),
-                              const SizedBox(width: 8),
-                              _buildTypeChip("Gold/Interest Only", ForecastType.debtInterestOnly),
-                              const SizedBox(width: 8),
-                              _buildTypeChip("Personal Debt", ForecastType.debtSimple),
-                              const SizedBox(width: 8),
-                              _buildTypeChip("Goal / Asset", ForecastType.goalTarget),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-
-                        // NAME & ICON
-                        Row(
-                          children: [
-                            Container(
-                              width: 50,
-                              height: 50,
-                              decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)),
-                              child: Center(child: Text(_selectedIcon, style: const TextStyle(fontSize: 24))),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: TextFormField(
-                                controller: _nameController,
-                                style: const TextStyle(color: Colors.white),
-                                decoration: _inputDecor("Name (e.g. Car Loan)"),
-                                validator: (v) => v!.isEmpty ? "Required" : null,
-                              ),
-                            ),
-                          ],
+                        // ─── TYPE SELECTOR ───
+                        _TypeSelector(
+                          selectedType: _selectedType,
+                          onTypeSelected: (type) => setState(() => _updateType(type)),
                         ),
                         const SizedBox(height: 16),
 
-                        // AMOUNT FIELDS
-                        if (isLiability) ...[
-                          TextFormField(
-                            controller: _originalAmountController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: _inputDecor("Original Loan Amount (₹)"),
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _amountController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                            decoration: _inputDecor("Outstanding Amount (₹)"),
-                            validator: (v) => v!.isEmpty ? "Required" : null,
-                          ),
-                        ] else ...[
-                          TextFormField(
-                            controller: _amountController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                            decoration: _inputDecor("Current Saved (₹)"),
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _targetController,
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: _inputDecor("Target Goal Amount (₹)"),
-                            validator: (v) => v!.isEmpty ? "Required" : null,
-                          ),
-                        ],
-
-                        const SizedBox(height: 16),
-
-                        // TOGGLE: INTEREST or GROWTH
-                        if (isPersonalDebt || isGoal) ...[
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                  isGoal ? "Does this investment grow?" : "Does this loan have interest?",
-                                  style: const TextStyle(color: Colors.grey, fontSize: 13)
-                              ),
-                              Switch(
-                                value: _hasInterestOrGrowth,
-                                activeColor: const Color(0xFF3B82F6),
-                                onChanged: (val) => setState(() => _hasInterestOrGrowth = val),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                        ],
-
-                        // RATE & PAYMENT
+                        // ─── ICON & NAME ───
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (showRate)
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 16.0),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      TextFormField(
-                                        controller: _rateController,
-                                        keyboardType: TextInputType.number,
-                                        style: const TextStyle(color: Colors.white),
-                                        decoration: _inputDecor(rateLabel),
-                                        validator: (v) => v!.isEmpty ? "Req" : null,
-                                      ),
-                                      if (isGoal)
-                                        Padding(
-                                          padding: const EdgeInsets.only(top: 4, left: 4),
-                                          child: Text("Enter post-tax return", style: TextStyle(color: Colors.grey[500], fontSize: 10)),
-                                        ),
-                                    ],
-                                  ),
+                            GestureDetector(
+                              onTap: _pickIcon,
+                              child: Container(
+                                width: 52,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  color: theme.scaffoldBackgroundColor,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: onBg.withOpacity(0.1)),
+                                ),
+                                child: Center(
+                                  child: Text(_selectedIcon, style: const TextStyle(fontSize: 24)),
                                 ),
                               ),
-                            if (showPayment)
-                              Expanded(
-                                child: TextFormField(
-                                  controller: _paymentController,
-                                  keyboardType: TextInputType.number,
-                                  style: const TextStyle(color: Colors.white),
-                                  decoration: _inputDecor(paymentLabel),
-                                  validator: (v) {
-                                    if (isPaymentRequired && (v == null || v.isEmpty)) return "Required";
-                                    return null;
-                                  },
-                                ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildCompactTextField(
+                                controller: _nameController,
+                                label: "Plan Name",
+                                hint: "e.g. Home Loan",
+                                theme: theme,
+                                onBg: onBg,
                               ),
+                            ),
                           ],
                         ),
+                        const SizedBox(height: 12),
 
-                        const SizedBox(height: 32),
-
-                        // --- ACTION BUTTONS ---
-
-                        // DELETE BUTTON (Only in Edit Mode)
-                        if (isEditMode) ...[
-                          SizedBox(
-                            width: double.infinity,
-                            height: 50,
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                side: BorderSide(color: Colors.red.withOpacity(0.5)),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        // ─── AMOUNTS ───
+                        if (isLiability) ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildCompactTextField(
+                                  controller: _originalAmountController,
+                                  label: "Total Loan",
+                                  prefix: symbol,
+                                  isNumber: true,
+                                  theme: theme,
+                                  onBg: onBg,
+                                ),
                               ),
-                              onPressed: () {
-                                showDialog(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    backgroundColor: const Color(0xFF1E293B),
-                                    title: const Text("Delete Strategy?", style: TextStyle(color: Colors.white)),
-                                    content: const Text(
-                                      "This will remove this item from your forecast. Action cannot be undone.",
-                                      style: TextStyle(color: Colors.grey),
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx),
-                                        child: const Text("Cancel", style: TextStyle(color: Colors.white)),
-                                      ),
-                                      TextButton(
-                                        onPressed: () {
-                                          final provider = Provider.of<FinanceProvider>(context, listen: false);
-                                          provider.deleteForecastItem(widget.itemToEdit!.id);
-                                          Navigator.pop(ctx); // Close confirmation
-                                          Navigator.pop(context); // Close edit dialog
-                                        },
-                                        child: const Text("Delete", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                                      ),
-                                    ],
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildCompactTextField(
+                                  controller: _amountController,
+                                  label: "Outstanding",
+                                  prefix: symbol,
+                                  isNumber: true,
+                                  theme: theme,
+                                  onBg: onBg,
+                                  validator: (v) => v!.isEmpty ? "Req" : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ] else ...[
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildCompactTextField(
+                                  controller: _amountController,
+                                  label: "Saved So Far",
+                                  prefix: symbol,
+                                  isNumber: true,
+                                  theme: theme,
+                                  onBg: onBg,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _buildCompactTextField(
+                                  controller: _targetController,
+                                  label: "Target Amount",
+                                  prefix: symbol,
+                                  isNumber: true,
+                                  theme: theme,
+                                  onBg: onBg,
+                                  validator: (v) => v!.isEmpty ? "Req" : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+
+                        // ─── INTEREST TOGGLE (Personal Debt / Goal) ───
+                        if (showInterestToggle)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    isGoal ? "Does this grow?" : "Has interest?",
+                                    style: TextStyle(color: onBg.withOpacity(0.7), fontSize: 13),
                                   ),
-                                );
-                              },
-                              child: const Text("Delete Strategy", style: TextStyle(color: Colors.redAccent)),
+                                ),
+                                SizedBox(
+                                  height: 24,
+                                  child: Switch(
+                                    value: _hasInterestOrGrowth,
+                                    activeColor: const Color(0xFF3B82F6),
+                                    onChanged: (val) => setState(() => _hasInterestOrGrowth = val),
+                                  ),
+                                ),
+                              ],
                             ),
+                          ),
+
+                        // ─── PAYMENT (Amortized only) ───
+                        if (showPayment) ...[
+                          _buildCompactTextField(
+                            controller: _paymentController,
+                            label: "Monthly EMI",
+                            prefix: symbol,
+                            isNumber: true,
+                            theme: theme,
+                            onBg: onBg,
+                            validator: (v) => (v == null || v.isEmpty) ? "Req" : null,
                           ),
                           const SizedBox(height: 12),
                         ],
 
-                        // SAVE BUTTON
+                        // ─── RATE & DATE (Optimized Row) ───
+                        if (showRate || showBillingDate)
+                          Row(
+                            children: [
+                              if (showRate)
+                                Expanded(
+                                  child: _buildCompactTextField(
+                                    controller: _rateController,
+                                    label: isGoal ? "Return %" : "Interest %",
+                                    suffix: "%",
+                                    isNumber: true,
+                                    theme: theme,
+                                    onBg: onBg,
+                                    validator: (v) => v!.isEmpty ? "Req" : null,
+                                  ),
+                                ),
+
+                              if (showRate && showBillingDate)
+                                const SizedBox(width: 12),
+
+                              if (showBillingDate)
+                                Expanded(
+                                  child: _buildCompactTextField(
+                                    controller: _billingDayController,
+                                    label: _getBillingDateLabel(),
+                                    hint: "Day (1-28)",
+                                    isNumber: true,
+                                    theme: theme,
+                                    onBg: onBg,
+                                    validator: (val) {
+                                      if (val == null || val.isEmpty) return "Req";
+                                      final day = int.tryParse(val);
+                                      if (day == null || day < 1 || day > 28) return "1-28";
+                                      return null;
+                                    },
+                                  ),
+                                ),
+                            ],
+                          ),
+
+                        const SizedBox(height: 24),
+
+                        // ─── SAVE BUTTON ───
                         SizedBox(
                           width: double.infinity,
-                          height: 50,
                           child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3B82F6), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                             onPressed: () {
-                              if (_formKey.currentState!.validate()) _saveItem(context, isEditMode);
+                              if (_formKey.currentState!.validate()) {
+                                _saveItem(context, isEditMode);
+                              }
                             },
-                            child: Text(isEditMode ? "Update Strategy" : "Add Strategy", style: const TextStyle(fontSize: 16, color: Colors.white)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF3B82F6),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              elevation: 0,
+                            ),
+                            child: Text(
+                              isEditMode ? 'Save Changes' : 'Add Plan',
+                              style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ),
                       ],
@@ -321,86 +348,250 @@ class _AddForecastItemDialogState extends State<AddForecastItemDialog> {
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildTypeChip(String label, ForecastType type) {
-    final isSelected = _selectedType == type;
-    return FilterChip(
-      label: Text(label),
-      selected: isSelected,
-      onSelected: (v) {
-        setState(() {
-          _selectedType = type;
-          if (type.index <= 2) { _selectedColor = const Color(0xFFEF4444); _selectedIcon = "🏠"; }
-          else { _selectedColor = const Color(0xFF10B981); _selectedIcon = "🎯"; }
+  // ... (Methods below remain unchanged) ...
 
-          // Default Toggles
-          if (type == ForecastType.debtSimple || type == ForecastType.goalTarget) {
-            _hasInterestOrGrowth = false; // Default OFF for Personal/Goal
-            _rateController.clear();
-          } else {
-            _hasInterestOrGrowth = true;
-          }
-        });
-      },
-      backgroundColor: Colors.white10,
-      selectedColor: const Color(0xFF3B82F6),
-      labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.grey),
-      checkmarkColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      side: BorderSide.none,
-    );
+  void _updateType(ForecastType type) {
+    _selectedType = type;
+    if (type.index <= 2) {
+      _selectedColor = const Color(0xFFEF4444);
+      _selectedIcon = "🏠";
+      // Interest defaults: ON for Loans/Amortized, OFF for Personal Debt
+      _hasInterestOrGrowth = type != ForecastType.debtSimple;
+    } else {
+      _selectedColor = const Color(0xFF10B981);
+      _selectedIcon = "🎯";
+      // ✨ UPDATED: Default Growth to OFF for Goals
+      _hasInterestOrGrowth = false;
+    }
   }
 
-  InputDecoration _inputDecor(String label) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: TextStyle(color: Colors.grey[400]),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.white10)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF3B82F6))),
-      filled: true,
-      fillColor: Colors.black26,
+  String _getBillingDateLabel() {
+    if (_selectedType == ForecastType.emiAmortized) return "EMI Date";
+    if (_selectedType == ForecastType.emiInterestOnly) return "Debit Date";
+    if (_selectedType == ForecastType.debtSimple) return "Debit Date";
+    if (_selectedType == ForecastType.goalTarget) return "Credit Date";
+    return "Billing Date";
+  }
+
+  // ... (_buildCompactTextField, _saveItem, _confirmDelete, _pickIcon, _TypeSelector, _TypeOption classes remain same) ...
+
+  Widget _buildCompactTextField(
+      {required TextEditingController controller,
+        required String label,
+        String? hint,
+        String? prefix,
+        String? suffix,
+        bool isNumber = false,
+        String? Function(String?)? validator,
+        required ThemeData theme,
+        required Color onBg}) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+      style: TextStyle(color: onBg, fontSize: 14, fontWeight: FontWeight.w500),
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: onBg.withOpacity(0.6), fontSize: 13),
+        hintText: hint,
+        hintStyle: TextStyle(color: onBg.withOpacity(0.4), fontSize: 13),
+        prefixText: prefix != null ? "$prefix " : null,
+        suffixText: suffix,
+        filled: true,
+        fillColor: theme.scaffoldBackgroundColor,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+        focusedBorder: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(14)),
+          borderSide: BorderSide(color: Color(0xFF3B82F6), width: 1.5),
+        ),
+      ),
     );
   }
 
   void _saveItem(BuildContext context, bool isEdit) {
     final provider = Provider.of<FinanceProvider>(context, listen: false);
 
-    double targetVal = 0;
+    double targetVal;
     if (_selectedType.index <= 2) {
       targetVal = double.tryParse(_originalAmountController.text) ?? 0;
     } else {
       targetVal = double.tryParse(_targetController.text) ?? 0;
     }
 
-    // Check visibility to determine if we save Rate/Payment
-    final isGoal = _selectedType == ForecastType.goalTarget;
-    final isPersonal = _selectedType == ForecastType.debtSimple;
-    final showRate = _selectedType == ForecastType.debtMelting || _selectedType == ForecastType.debtInterestOnly || ((isPersonal || isGoal) && _hasInterestOrGrowth);
+    final bool showPayment = _selectedType == ForecastType.emiAmortized;
+    final double payment = showPayment ? (double.tryParse(_paymentController.text) ?? 0) : 0;
+
+    final bool hasInterest = _selectedType == ForecastType.emiAmortized ||
+        _selectedType == ForecastType.emiInterestOnly ||
+        _hasInterestOrGrowth;
+
+    final existing = widget.itemToEdit;
 
     final newItem = ForecastItem(
-      id: isEdit ? widget.itemToEdit!.id : const Uuid().v4(),
-      name: _nameController.text,
-      icon: _selectedIcon,
-      type: _selectedType,
-      currentAmount: double.tryParse(_amountController.text) ?? 0,
-      targetAmount: targetVal,
-      interestRate: showRate ? (double.tryParse(_rateController.text) ?? 0) : 0,
-      monthlyPayment: double.tryParse(_paymentController.text) ?? 0,
-      colorValue: _selectedColor.value,
-    );
+        id: isEdit ? existing!.id : const Uuid().v4(),
+        name: _nameController.text,
+        icon: _selectedIcon,
+        type: _selectedType,
+        currentOutstanding: double.tryParse(_amountController.text) ?? 0,
+        targetAmount: targetVal,
+        interestRate: hasInterest ? (double.tryParse(_rateController.text) ?? 0) : 0,
+        monthlyEmiOrContribution: payment,
+        billingDay: int.tryParse(_billingDayController.text) ?? 1,
+        colorValue: _selectedColor.value,
+        categoryId: existing?.categoryId);
 
     if (isEdit) {
-      provider.deleteForecastItem(newItem.id);
-      provider.addForecastItem(newItem);
+      provider.updateForecastItem(newItem);
     } else {
       provider.addForecastItem(newItem);
     }
+
     Navigator.pop(context);
   }
+
+  void _confirmDelete() {
+    final theme = Theme.of(context);
+    final onBg = theme.colorScheme.onSurface;
+
+    showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+            backgroundColor: theme.cardColor,
+            title: Text("Delete plan?", style: TextStyle(color: onBg)),
+            content: Text(
+                "This will remove this plan from your forecast. This cannot be undone.",
+                style: TextStyle(color: onBg.withOpacity(0.7))),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text("Cancel", style: TextStyle(color: onBg.withOpacity(0.7)))),
+              TextButton(
+                  onPressed: () {
+                    final provider = Provider.of<FinanceProvider>(context, listen: false);
+                    provider.deleteForecastItem(widget.itemToEdit!.id);
+                    Navigator.of(ctx).pop();
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text("Delete", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)))
+            ]));
+  }
+
+  void _pickIcon() {
+    showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) {
+          final theme = Theme.of(ctx);
+          final onBg = theme.colorScheme.onSurface;
+          final bottomPadding = MediaQuery.of(ctx).padding.bottom;
+
+          final icons = [
+            "🏠", "🚗", "🎓", "💊", "💳", "🏖️", "💍", "💻", "📈", "👶",
+            "🍔", "🚆", "🎁", "⚡", "💧", "📱", "🚜", "⚓", "✈️", "🚀"
+          ];
+
+          return Container(
+              padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + bottomPadding),
+              decoration: BoxDecoration(
+                  color: theme.cardColor, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text("Choose Icon", style: TextStyle(color: onBg, fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                        spacing: 16,
+                        runSpacing: 16,
+                        alignment: WrapAlignment.center,
+                        children: icons
+                            .map((icon) => GestureDetector(
+                            onTap: () {
+                              setState(() => _selectedIcon = icon);
+                              Navigator.pop(ctx);
+                            },
+                            child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                    color: theme.scaffoldBackgroundColor, borderRadius: BorderRadius.circular(12)),
+                                child: Text(icon, style: const TextStyle(fontSize: 28)))))
+                            .toList()),
+                  ),
+                )
+              ]));
+        });
+  }
+}
+
+class _TypeSelector extends StatelessWidget {
+  final ForecastType selectedType;
+  final ValueChanged<ForecastType> onTypeSelected;
+
+  const _TypeSelector({required this.selectedType, required this.onTypeSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final onBg = theme.colorScheme.onSurface;
+
+    final options = [
+      _TypeOption("EMI Loan", "💵", ForecastType.emiAmortized),
+      _TypeOption("Interest-Only", "⏳", ForecastType.emiInterestOnly),
+      _TypeOption("Personal Debt", "🤝", ForecastType.debtSimple),
+      _TypeOption("Goal", "🎯", ForecastType.goalTarget),
+    ];
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.only(left: 4, bottom: 8),
+        child: Text('Plan Type',
+            style: TextStyle(color: onBg.withOpacity(0.7), fontSize: 12, fontWeight: FontWeight.w600)),
+      ),
+
+      Wrap(
+          spacing: 8,
+          runSpacing: 10,
+          children: options.map((o) {
+            final isSelected = selectedType == o.type;
+            return GestureDetector(
+                onTap: () => onTypeSelected(o.type),
+                child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                        color: isSelected ? const Color(0xFF3B82F6).withOpacity(0.15) : theme.scaffoldBackgroundColor,
+                        borderRadius: BorderRadius.circular(50),
+                        border: Border.all(
+                            color: isSelected ? const Color(0xFF3B82F6) : onBg.withOpacity(0.08),
+                            width: 1.5)),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Text(o.icon, style: const TextStyle(fontSize: 14)),
+                      const SizedBox(width: 6),
+                      Text(o.label,
+                          style: TextStyle(
+                              color: isSelected ? onBg : onBg.withOpacity(0.7),
+                              fontSize: 12,
+                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500))
+                    ])));
+          }).toList()),
+
+      const SizedBox(height: 16),
+      Divider(height: 1, color: onBg.withOpacity(0.1)),
+    ]);
+  }
+}
+
+class _TypeOption {
+  final String label;
+  final String icon;
+  final ForecastType type;
+  _TypeOption(this.label, this.icon, this.type);
 }
