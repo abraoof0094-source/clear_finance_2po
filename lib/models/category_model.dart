@@ -49,12 +49,18 @@ class CategoryModel {
   final CategoryBucket bucket;
   final bool isDefault;
 
+  /// Determines the display order in the list. Lower numbers appear first.
+  final int sortOrder; // <--- FIELD EXISTS
+
   /// If true, this category is treated as a monthly mandate/essential.
   final bool isMandate;
 
   /// Planned monthly amount for this mandate (used for Safe to spend etc.).
   /// Null when [isMandate] is false or user has not set a value.
   final double? monthlyMandate;
+
+  /// If true, this category appears in the "Quick Access" bar on Add Transaction screen.
+  final bool isPinned;
 
   CategoryModel({
     required this.id,
@@ -64,6 +70,8 @@ class CategoryModel {
     required this.isDefault,
     this.isMandate = false,
     this.monthlyMandate,
+    this.isPinned = false,
+    this.sortOrder = 0, // <--- Default value
   });
 
   CategoryModel copyWith({
@@ -74,6 +82,8 @@ class CategoryModel {
     bool? isDefault,
     bool? isMandate,
     double? monthlyMandate,
+    bool? isPinned,
+    int? sortOrder, // <--- ADDED PARAMETER ✅
   }) {
     return CategoryModel(
       id: id ?? this.id,
@@ -83,6 +93,8 @@ class CategoryModel {
       isDefault: isDefault ?? this.isDefault,
       isMandate: isMandate ?? this.isMandate,
       monthlyMandate: monthlyMandate ?? this.monthlyMandate,
+      isPinned: isPinned ?? this.isPinned,
+      sortOrder: sortOrder ?? this.sortOrder, // <--- ADDED LOGIC ✅
     );
   }
 
@@ -95,6 +107,8 @@ class CategoryModel {
       'isDefault': isDefault,
       'isMandate': isMandate,
       'monthlyMandate': monthlyMandate,
+      'isPinned': isPinned,
+      'sortOrder': sortOrder, // <--- ADDED PERSISTENCE ✅
     };
   }
 
@@ -109,6 +123,8 @@ class CategoryModel {
       monthlyMandate: json['monthlyMandate'] == null
           ? null
           : (json['monthlyMandate'] as num).toDouble(),
+      isPinned: json['isPinned'] as bool? ?? false,
+      sortOrder: json['sortOrder'] as int? ?? 0, // <--- ADDED FALLBACK ✅
     );
   }
 }

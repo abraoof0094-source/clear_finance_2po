@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:math';
 
-import '../providers/finance_provider.dart';
-import '../models/category_model.dart';
+import '../../providers/finance_provider.dart';
+import '../../models/category_model.dart';
 
 class EditCategorySheet extends StatefulWidget {
   final CategoryModel? category;
@@ -22,20 +22,24 @@ class EditCategorySheet extends StatefulWidget {
 class _EditCategorySheetState extends State<EditCategorySheet> {
   late TextEditingController _nameController;
   late TextEditingController _iconController;
-  late TextEditingController _mandateController;
+
+  String _mandateAmount = "";
   final _formKey = GlobalKey<FormState>();
 
   late CategoryBucket _bucket;
   late bool _isMandate;
+  bool _showNumPad = false;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.category?.name ?? '');
     _iconController = TextEditingController(text: widget.category?.icon ?? '📁');
-    _mandateController = TextEditingController(
-      text: widget.category?.monthlyMandate?.toStringAsFixed(0) ?? '',
-    );
+
+    if (widget.category?.monthlyMandate != null) {
+      _mandateAmount = widget.category!.monthlyMandate!.toInt().toString();
+    }
+
     _bucket = widget.category?.bucket ?? widget.initialBucket;
     _isMandate = widget.category?.isMandate ?? false;
   }
@@ -44,7 +48,6 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
   void dispose() {
     _nameController.dispose();
     _iconController.dispose();
-    _mandateController.dispose();
     super.dispose();
   }
 
@@ -54,9 +57,8 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
     final onBg = theme.colorScheme.onSurface;
     final isEditing = widget.category != null;
 
-    // Get keyboard height (viewInsets) and system nav bar height (viewPadding)
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    final safeBottom = MediaQuery.of(context).viewPadding.bottom;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
 
     return Container(
       constraints: BoxConstraints(
@@ -66,41 +68,31 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
         color: theme.cardColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      padding: EdgeInsets.only(bottom: bottomInset),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ─── 1. Drag Handle & Header ───
+          // ─── HEADER ───
           const SizedBox(height: 12),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: onBg.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
+          Container(width: 40, height: 4, decoration: BoxDecoration(color: onBg.withOpacity(0.2), borderRadius: BorderRadius.circular(2))),
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
             child: Row(
               children: [
                 Text(
-                  isEditing ? "Edit Category" : "New Category",
-                  style: TextStyle(
-                    color: onBg,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                    isEditing ? "Edit Category" : "New Category",
+                    style: TextStyle(color: onBg, fontSize: 20, fontWeight: FontWeight.bold)
                 ),
                 const Spacer(),
                 IconButton(
-                  icon: Icon(Icons.close, color: onBg.withOpacity(0.6)),
-                  onPressed: () => Navigator.pop(context),
+                    icon: Icon(Icons.close, color: onBg.withOpacity(0.6)),
+                    onPressed: () => Navigator.pop(context)
                 ),
               ],
             ),
           ),
 
-          // ─── 2. Scrollable Form ───
+          // ─── SCROLLABLE FORM ───
           Flexible(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
@@ -110,28 +102,21 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
                 Form(
                   key: _formKey,
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Icon + Name Row
+                      // Icon & Name
                       Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           GestureDetector(
                             onTap: _showEmojiPicker,
                             child: Container(
-                              width: 56,
-                              height: 56,
+                              width: 56, height: 56,
                               decoration: BoxDecoration(
                                 color: theme.scaffoldBackgroundColor,
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(color: onBg.withOpacity(0.12)),
                               ),
-                              child: Center(
-                                child: Text(
-                                  _iconController.text.isEmpty ? '📁' : _iconController.text,
-                                  style: const TextStyle(fontSize: 28),
-                                ),
-                              ),
+                              alignment: Alignment.center,
+                              child: Text(_iconController.text, style: const TextStyle(fontSize: 28)),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -140,11 +125,8 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
                               controller: _nameController,
                               style: TextStyle(color: onBg, fontSize: 16, fontWeight: FontWeight.w500),
                               textCapitalization: TextCapitalization.sentences,
-                              decoration: _filledFieldDecoration(
-                                context: context,
-                                label: 'Category Name',
-                                hint: 'e.g., Groceries',
-                              ),
+                              onTap: () => setState(() => _showNumPad = false),
+                              decoration: _filledFieldDecoration(context: context, label: 'Category Name', hint: 'e.g., Groceries'),
                               validator: (val) => val == null || val.trim().isEmpty ? 'Name required' : null,
                             ),
                           ),
@@ -152,38 +134,41 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
                       ),
                       const SizedBox(height: 20),
 
-                      // Bucket Dropdown (Styled as InputDecorator)
-                      InputDecorator(
-                        decoration: _filledFieldDecoration(
-                          context: context,
-                          label: 'Type / Bucket',
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<CategoryBucket>(
-                            value: _bucket,
-                            isDense: true,
-                            isExpanded: true,
-                            dropdownColor: theme.cardColor,
-                            icon: Icon(Icons.keyboard_arrow_down_rounded, color: onBg.withOpacity(0.5)),
-                            style: TextStyle(color: onBg, fontSize: 15, fontWeight: FontWeight.w500),
-                            items: const [
-                              DropdownMenuItem(value: CategoryBucket.expense, child: Text('🔴  Expense')),
-                              DropdownMenuItem(value: CategoryBucket.invest, child: Text('🟢  Invest')),
-                              DropdownMenuItem(value: CategoryBucket.liability, child: Text('⚖️  Liability')),
-                              DropdownMenuItem(value: CategoryBucket.goal, child: Text('🎯  Goal')),
-                              DropdownMenuItem(value: CategoryBucket.income, child: Text('💵  Income')),
+                      // Bucket Selector
+                      GestureDetector(
+                        onTap: () {
+                          FocusScope.of(context).unfocus();
+                          setState(() => _showNumPad = false);
+                          _showBucketPicker();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: theme.scaffoldBackgroundColor,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text("Type / Bucket", style: TextStyle(color: onBg.withOpacity(0.6), fontSize: 12)),
+                                  const SizedBox(height: 4),
+                                  Text(_getBucketLabel(_bucket), style: TextStyle(color: onBg, fontSize: 16, fontWeight: FontWeight.w500)),
+                                ],
+                              ),
+                              const Spacer(),
+                              Icon(Icons.keyboard_arrow_down_rounded, color: onBg.withOpacity(0.5)),
                             ],
-                            onChanged: (value) {
-                              if (value != null) setState(() => _bucket = value);
-                            },
                           ),
                         ),
                       ),
+
                       Padding(
                         padding: const EdgeInsets.only(left: 4, top: 8, bottom: 24),
-                        child: Text(
-                          _helperTextForBucket(_bucket),
-                          style: TextStyle(color: onBg.withOpacity(0.5), fontSize: 12),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(_helperTextForBucket(_bucket), style: TextStyle(color: onBg.withOpacity(0.5), fontSize: 12)),
                         ),
                       ),
 
@@ -191,7 +176,10 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          border: Border.all(color: onBg.withOpacity(0.08)),
+                          color: _isMandate ? const Color(0xFF10B981).withOpacity(0.05) : Colors.transparent,
+                          border: Border.all(
+                              color: _isMandate ? const Color(0xFF10B981).withOpacity(0.3) : onBg.withOpacity(0.08)
+                          ),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Column(
@@ -203,18 +191,23 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text('Fixed Monthly Amount?', style: TextStyle(color: onBg, fontSize: 15, fontWeight: FontWeight.w600)),
-                                      const SizedBox(height: 2),
-                                      Text('For fixed bills like Rent, Netflix, SIPs', style: TextStyle(color: onBg.withOpacity(0.6), fontSize: 12)),
+                                      Text('Rent, Netflix, SIPs', style: TextStyle(color: onBg.withOpacity(0.6), fontSize: 12)),
                                     ],
                                   ),
                                 ),
                                 Switch(
                                   value: _isMandate,
-                                  activeColor: const Color(0xFF3B82F6),
+                                  activeColor: const Color(0xFF10B981),
                                   onChanged: (v) {
                                     setState(() {
                                       _isMandate = v;
-                                      if (!v) _mandateController.clear();
+                                      if (v) {
+                                        _showNumPad = true;
+                                        FocusScope.of(context).unfocus();
+                                      } else {
+                                        _showNumPad = false;
+                                        _mandateAmount = "";
+                                      }
                                     });
                                   },
                                 ),
@@ -223,24 +216,41 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
 
                             if (_isMandate) ...[
                               const Divider(height: 24),
-                              TextFormField(
-                                controller: _mandateController,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                style: TextStyle(color: onBg, fontSize: 16),
-                                decoration: _filledFieldDecoration(
-                                  context: context,
-                                  label: 'Monthly Amount',
-                                  hint: '0.00',
-                                  prefix: '₹ ',
-                                ),
-                                validator: (val) {
-                                  if (!_isMandate) return null;
-                                  if (val == null || val.isEmpty) return 'Amount required';
-                                  if (double.tryParse(val.replaceAll(',', '')) == null) return 'Invalid amount';
-                                  return null;
+                              GestureDetector(
+                                onTap: () {
+                                  FocusScope.of(context).unfocus();
+                                  setState(() => _showNumPad = true);
                                 },
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                                  decoration: BoxDecoration(
+                                    color: theme.cardColor,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                        color: _showNumPad ? const Color(0xFF10B981) : onBg.withOpacity(0.1),
+                                        width: _showNumPad ? 1.5 : 1
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Text("₹ ", style: TextStyle(color: onBg.withOpacity(0.6), fontSize: 18, fontWeight: FontWeight.bold)),
+                                      Text(
+                                        _mandateAmount.isEmpty ? "0" : _mandateAmount,
+                                        style: TextStyle(
+                                            color: _mandateAmount.isEmpty ? onBg.withOpacity(0.3) : onBg,
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      if (_showNumPad)
+                                        const Icon(Icons.edit, size: 16, color: Color(0xFF10B981))
+                                    ],
+                                  ),
+                                ),
                               ),
-                            ],
+                            ]
                           ],
                         ),
                       ),
@@ -252,46 +262,40 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
             ),
           ),
 
-          // ─── 3. Action Buttons (Sticky on Keyboard & Safe Area) ───
+          // ─── CUSTOM NUMBER PAD ───
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            height: _showNumPad ? 240 : 0,
+            decoration: BoxDecoration(
+              color: theme.scaffoldBackgroundColor,
+              border: Border(top: BorderSide(color: onBg.withOpacity(0.05))),
+            ),
+            child: SingleChildScrollView(
+              physics: const NeverScrollableScrollPhysics(),
+              child: SizedBox(
+                height: 240,
+                child: _showNumPad ? _buildCustomNumPad(theme, onBg) : null,
+              ),
+            ),
+          ),
+
+          // ─── ACTION BUTTONS ───
           Container(
-            padding: EdgeInsets.fromLTRB(24, 12, 24, 12 + max(bottomInset, safeBottom)),
+            padding: EdgeInsets.fromLTRB(24, 12, 24, 12 + (bottomInset > 0 ? 0 : safeBottom)),
             decoration: BoxDecoration(
               color: theme.cardColor,
-              border: Border(top: BorderSide(color: onBg.withOpacity(0.05))),
+              boxShadow: _showNumPad ? [
+                BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))
+              ] : null,
             ),
             child: Row(
               children: [
                 if (isEditing) ...[
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _confirmDelete(context),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.redAccent,
-                        side: BorderSide(color: Colors.redAccent.withOpacity(0.5)),
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      ),
-                      child: const Text('Delete'),
-                    ),
-                  ),
+                  Expanded(child: _buildOutlineBtn(context, "Delete", Colors.redAccent, () => _confirmDelete(context))),
                   const SizedBox(width: 16),
                 ],
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton(
-                    onPressed: _saveCategory,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF3B82F6),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    ),
-                    child: Text(
-                      isEditing ? 'Save Changes' : 'Create Category',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                  ),
-                ),
+                Expanded(flex: 2, child: _buildPrimaryBtn(context, isEditing ? "Save" : "Create", _saveCategory)),
               ],
             ),
           ),
@@ -300,44 +304,145 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
     );
   }
 
-  // ─── Helpers ───
+  // ─── WIDGET HELPERS ───
 
-  InputDecoration _filledFieldDecoration({
-    required BuildContext context,
-    required String label,
-    String? hint,
-    String? prefix,
-  }) {
-    final theme = Theme.of(context);
-    final onBg = theme.colorScheme.onSurface;
+  Widget _buildCustomNumPad(ThemeData theme, Color onBg) {
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: () => setState(() => _showNumPad = false),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            alignment: Alignment.center,
+            child: Container(
+                width: 32, height: 4,
+                decoration: BoxDecoration(color: onBg.withOpacity(0.1), borderRadius: BorderRadius.circular(2))
+            ),
+          ),
+        ),
+        Expanded(
+          child: Row(children: [_padKey("1"), _padKey("2"), _padKey("3")]),
+        ),
+        Expanded(
+          child: Row(children: [_padKey("4"), _padKey("5"), _padKey("6")]),
+        ),
+        Expanded(
+          child: Row(children: [_padKey("7"), _padKey("8"), _padKey("9")]),
+        ),
+        Expanded(
+          child: Row(children: [
+            _padKey("."),
+            _padKey("0"),
+            _padActionKey(Icons.backspace_outlined, () {
+              if (_mandateAmount.isNotEmpty) {
+                setState(() => _mandateAmount = _mandateAmount.substring(0, _mandateAmount.length - 1));
+              }
+            }),
+          ]),
+        ),
+        const SizedBox(height: 8),
+      ],
+    );
+  }
 
-    return InputDecoration(
-      labelText: label,
-      labelStyle: TextStyle(color: onBg.withOpacity(0.6), fontSize: 14),
-      hintText: hint,
-      hintStyle: TextStyle(color: onBg.withOpacity(0.3)),
-      prefixText: prefix,
-      prefixStyle: TextStyle(color: onBg, fontSize: 16, fontWeight: FontWeight.w600),
-      filled: true,
-      fillColor: theme.scaffoldBackgroundColor,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-      focusedBorder: const OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(14)),
-        borderSide: BorderSide(color: Color(0xFF3B82F6), width: 1.5),
+  Widget _padKey(String label) {
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          if (label == "." && _mandateAmount.contains(".")) return;
+          if (_mandateAmount.length > 8) return;
+          setState(() => _mandateAmount += label);
+        },
+        child: Center(
+          child: Text(label, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w400)),
+        ),
       ),
     );
   }
 
-  String _helperTextForBucket(CategoryBucket bucket) {
-    switch (bucket) {
-      case CategoryBucket.expense: return "Daily spending: food, travel, shopping.";
-      case CategoryBucket.invest: return "Assets: SIPs, stocks, gold, funds.";
-      case CategoryBucket.liability: return "Debts: loans, EMIs, credit card bills.";
-      case CategoryBucket.goal: return "Targets: vacation, car, wedding savings.";
-      case CategoryBucket.income: return "Inflow: salary, bonus, interest.";
-    }
+  Widget _padActionKey(IconData icon, VoidCallback onTap) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Center(child: Icon(icon, size: 22)),
+      ),
+    );
+  }
+
+  Widget _buildPrimaryBtn(BuildContext context, String text, VoidCallback onTap) {
+    return ElevatedButton(
+      onPressed: onTap,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xFF3B82F6),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        elevation: 0,
+      ),
+      child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+    );
+  }
+
+  Widget _buildOutlineBtn(BuildContext context, String text, Color color, VoidCallback onTap) {
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        side: BorderSide(color: color.withOpacity(0.3)),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold)),
+    );
+  }
+
+  // ─── LOGIC HELPERS ───
+
+  void _showBucketPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final safeBottom = MediaQuery.of(ctx).padding.bottom;
+        return Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min, // Hug content
+            children: [
+              const SizedBox(height: 12),
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.withOpacity(0.3), borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 20),
+              Text("Select Type", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.onSurface)),
+              const SizedBox(height: 12),
+
+              ...CategoryBucket.values.map((b) => ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _bucket == b ? const Color(0xFF3B82F6).withOpacity(0.1) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(_getBucketEmoji(b), style: const TextStyle(fontSize: 22)),
+                ),
+                title: Text(_getBucketLabel(b), style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
+                subtitle: Text(_helperTextForBucket(b), style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5))),
+                trailing: _bucket == b ? const Icon(Icons.check_circle, color: Color(0xFF3B82F6)) : null,
+                onTap: () {
+                  setState(() => _bucket = b);
+                  Navigator.pop(ctx);
+                },
+              )),
+              SizedBox(height: safeBottom + 20), // Padding above nav bar
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _showEmojiPicker() {
@@ -352,7 +457,8 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
         final emojis = [
           '🏠', '🚗', '🍱', '💊', '📱', '⚡', '💳', '🎓', '👨‍👩‍👧', '📈',
           '🏦', '🎯', '💰', '🍽️', '🛍️', '🎬', '✈️', '🎁', '💵', '🏋️',
-          '📚', '🎮', '☕', '🍔', '🛒', '⛽', '🏥', '🐶', '👔', '🧹'
+          '📚', '🎮', '☕', '🍔', '🛒', '⛽', '🏥', '🐶', '👔', '🧹',
+          '🍻', '🎨', '💇', '🚕', '🥖', '🥦', '🍼', '⚽', '🎸', '🏖️'
         ];
 
         return Container(
@@ -405,31 +511,37 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
     );
   }
 
-  void _confirmDelete(BuildContext context) {
-    final theme = Theme.of(context);
-    final onBg = theme.colorScheme.onSurface;
+  String _getBucketLabel(CategoryBucket b) => b.toString().split('.').last[0].toUpperCase() + b.toString().split('.').last.substring(1);
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: theme.cardColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Delete Category?', style: TextStyle(color: onBg)),
-        content: Text('Transactions will be kept but marked as Uncategorized.', style: TextStyle(color: onBg.withOpacity(0.7))),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: TextStyle(color: onBg.withOpacity(0.7))),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _deleteCategory();
-            },
-            child: const Text('Delete', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+  String _getBucketEmoji(CategoryBucket b) {
+    switch(b) {
+      case CategoryBucket.expense: return "🔴";
+      case CategoryBucket.invest: return "🟢";
+      case CategoryBucket.liability: return "⚖️";
+      case CategoryBucket.goal: return "🎯";
+      case CategoryBucket.income: return "💵";
+    }
+  }
+
+  String _helperTextForBucket(CategoryBucket bucket) {
+    switch (bucket) {
+      case CategoryBucket.expense: return "Daily spending: food, travel, shopping.";
+      case CategoryBucket.invest: return "Assets: SIPs, stocks, gold, funds.";
+      case CategoryBucket.liability: return "Debts: loans, EMIs, credit card bills.";
+      case CategoryBucket.goal: return "Targets: vacation, car, wedding savings.";
+      case CategoryBucket.income: return "Inflow: salary, bonus, interest.";
+    }
+  }
+
+  InputDecoration _filledFieldDecoration({required BuildContext context, required String label, String? hint}) {
+    final theme = Theme.of(context);
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      filled: true,
+      fillColor: theme.scaffoldBackgroundColor,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     );
   }
 
@@ -438,48 +550,43 @@ class _EditCategorySheetState extends State<EditCategorySheet> {
 
     final provider = Provider.of<FinanceProvider>(context, listen: false);
     final name = _nameController.text.trim();
-    final icon = _iconController.text.trim().isEmpty ? '📁' : _iconController.text.trim();
+    final icon = _iconController.text.trim();
 
     double? monthlyMandate;
-    if (_isMandate && _mandateController.text.isNotEmpty) {
-      monthlyMandate = double.tryParse(_mandateController.text.replaceAll(',', ''));
+    if (_isMandate && _mandateAmount.isNotEmpty) {
+      monthlyMandate = double.tryParse(_mandateAmount);
     }
 
     if (widget.category != null) {
-      final updated = widget.category!.copyWith(
-        name: name,
-        icon: icon,
-        bucket: _bucket,
-        isMandate: _isMandate,
-        monthlyMandate: monthlyMandate,
-      );
+      final updated = widget.category!.copyWith(name: name, icon: icon, bucket: _bucket, isMandate: _isMandate, monthlyMandate: monthlyMandate);
       provider.updateCategory(updated);
       Navigator.pop(context, updated);
     } else {
-      // Safe ID Generation
-      final newId = provider.categories.isEmpty
-          ? 1000
-          : provider.categories.map((c) => c.id).reduce(max) + 1;
-
-      final newCat = CategoryModel(
-        id: newId,
-        name: name,
-        icon: icon,
-        bucket: _bucket,
-        isDefault: false,
-        isMandate: _isMandate,
-        monthlyMandate: monthlyMandate,
-      );
+      final newId = provider.categories.isEmpty ? 1000 : provider.categories.map((c) => c.id).reduce(max) + 1;
+      final newCat = CategoryModel(id: newId, name: name, icon: icon, bucket: _bucket, isDefault: false, isMandate: _isMandate, monthlyMandate: monthlyMandate);
       provider.addCategory(newCat);
       Navigator.pop(context, newCat);
     }
   }
 
-  void _deleteCategory() {
+  void _confirmDelete(BuildContext context) {
     final provider = Provider.of<FinanceProvider>(context, listen: false);
-    if (widget.category != null) {
-      provider.deleteCategory(widget.category!.id);
-      Navigator.pop(context);
-    }
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Delete Category?'),
+        content: const Text('Transactions will be marked as Uncategorized.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(onPressed: () {
+            provider.deleteCategory(widget.category!.id);
+            Navigator.pop(ctx); // Dialog
+            Navigator.pop(context); // Sheet
+          }, child: const Text('Delete', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
   }
 }

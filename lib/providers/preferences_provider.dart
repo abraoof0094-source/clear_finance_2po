@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/category_model.dart'; // Needed for CategoryBucket enum
 
 class PreferencesProvider extends ChangeNotifier {
   // Keys for SharedPreferences
   static const String _currencyCodeKey = 'currency_code';
-  static const String _currencySymbolKey = 'currency_symbol'; // Added separate key
+  static const String _currencySymbolKey = 'currency_symbol';
   static const String _languageKey = 'language_code';
   static const String _notificationKey = 'daily_reminder';
-  static const String _appLockKey = 'app_lock_enabled'; // Must match SecurityScreen key
+  static const String _appLockKey = 'app_lock_enabled';
   static const String _reminderHourKey = 'reminder_hour';
   static const String _reminderMinuteKey = 'reminder_minute';
   static const String _customRemindersKey = 'custom_reminders';
+  static const String _bucketOrderKey = 'bucket_order'; // <--- NEW KEY 🔢
 
   // Default values
   String _currencyCode = 'INR';
@@ -24,6 +26,11 @@ class PreferencesProvider extends ChangeNotifier {
   // Custom reminders list
   List<Map<String, dynamic>> _customReminders = [];
 
+  // Tab Order (Stored as Strings, exposed as Enums)
+  List<String> _bucketOrderStrings = [
+    'income', 'expense', 'invest', 'liability', 'goal'
+  ];
+
   // Getters
   String get currencyCode => _currencyCode;
   String get currencySymbol => _currencySymbol;
@@ -33,6 +40,13 @@ class PreferencesProvider extends ChangeNotifier {
   TimeOfDay get reminderTime => TimeOfDay(hour: _reminderHour, minute: _reminderMinute);
   List<Map<String, dynamic>> get customReminders => List.unmodifiable(_customReminders);
 
+  /// Returns the buckets in the user's preferred order
+  List<CategoryBucket> get bucketOrder {
+    return _bucketOrderStrings
+        .map((s) => categoryBucketFromString(s))
+        .toList();
+  }
+
   PreferencesProvider() {
     _loadPreferences();
   }
@@ -40,7 +54,7 @@ class PreferencesProvider extends ChangeNotifier {
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
 
-    // Load Currency (Default to INR if missing)
+    // Load Currency
     _currencyCode = prefs.getString(_currencyCodeKey) ?? 'INR';
     _currencySymbol = prefs.getString(_currencySymbolKey) ?? '₹';
 
@@ -50,6 +64,7 @@ class PreferencesProvider extends ChangeNotifier {
     _reminderHour = prefs.getInt(_reminderHourKey) ?? 20;
     _reminderMinute = prefs.getInt(_reminderMinuteKey) ?? 0;
 
+    // Load Custom Reminders
     final rawList = prefs.getStringList(_customRemindersKey) ?? [];
     _customReminders = rawList.map((entry) {
       final parts = entry.split('|');
@@ -60,6 +75,33 @@ class PreferencesProvider extends ChangeNotifier {
       };
     }).toList();
 
+    // Load Bucket Order
+    final savedOrder = prefs.getStringList(_bucketOrderKey);
+    if (savedOrder != null && savedOrder.isNotEmpty) {
+      // Ensure all enum values exist (handle migrations/corrupt data)
+      final validOrder = savedOrder.where((s) {
+        try {
+          categoryBucketFromString(s);
+          return true;
+        } catch (_) { return false; }
+      }).toList();
+
+      // If valid, use it. Otherwise keep default.
+      if (validOrder.isNotEmpty) {
+        _bucketOrderStrings = validOrder;
+      }
+    }
+
+    notifyListeners();
+  }
+
+  // ───────── TAB ORDER LOGIC ─────────
+  Future<void> setBucketOrder(List<CategoryBucket> newOrder) async {
+    _bucketOrderStrings = newOrder.map((b) => categoryBucketToString(b)).toList();
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_bucketOrderKey, _bucketOrderStrings);
+
     notifyListeners();
   }
 
@@ -67,9 +109,7 @@ class PreferencesProvider extends ChangeNotifier {
     await _loadPreferences();
   }
 
-  // ───────── CURRENCY LOGIC (Updated) ─────────
-
-  /// Accepts both code and symbol to support ANY currency sent from UI
+  // ───────── CURRENCY LOGIC ─────────
   Future<void> setCurrency(String code, String symbol) async {
     _currencyCode = code;
     _currencySymbol = symbol;
