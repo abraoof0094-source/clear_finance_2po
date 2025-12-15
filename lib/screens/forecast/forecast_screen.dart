@@ -4,8 +4,8 @@ import 'package:provider/provider.dart';
 import '../../providers/finance_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../models/forecast_item.dart';
-import '../../widgets/add_forecast_item_dialog.dart';
 import '../../utils/currency_format.dart';
+import '../../widgets/add_forecast_item_dialog.dart'; // Ensure correct path
 import 'liability_detail_screen.dart';
 import 'goal_detail_screen.dart';
 
@@ -22,6 +22,11 @@ class ForecastScreen extends StatelessWidget {
     final goals = items.where((i) => !i.isLiability).toList();
     final theme = Theme.of(context);
     final onBg = theme.colorScheme.onSurface;
+
+    // Calculate totals locally if getters are missing or for UI specific formatting
+    final totalLiability = liabilities.fold<double>(0.0, (sum, item) => sum + item.currentOutstanding);
+    final totalAssets = goals.fold<double>(0.0, (sum, item) => sum + item.currentOutstanding);
+    final netWorth = totalAssets - totalLiability;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -47,12 +52,15 @@ class ForecastScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    // OPTIMIZED HERO CARD
+                    // HERO CARD
                     _buildForecastHeroCard(
                       context,
-                      provider,
+                      provider, // We pass provider, but use local values for display if needed
                       theme,
                       themeProvider.forecastCardColors,
+                      netWorth,
+                      totalLiability,
+                      totalAssets,
                     ),
                     const SizedBox(height: 32),
                   ],
@@ -83,13 +91,7 @@ class ForecastScreen extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            "-${CurrencyFormat.format(
-                              context,
-                              liabilities.fold<double>(
-                                0.0,
-                                    (sum, item) => sum + item.currentOutstanding,
-                              ),
-                            )}",
+                            "-${CurrencyFormat.format(context, totalLiability)}",
                             style: const TextStyle(
                               color: Colors.redAccent,
                               fontSize: 12,
@@ -106,7 +108,6 @@ class ForecastScreen extends StatelessWidget {
                         (context, index) => _buildLiabilityCard(
                       context,
                       liabilities[index],
-                      provider,
                     ),
                     childCount: liabilities.length,
                   ),
@@ -138,13 +139,7 @@ class ForecastScreen extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            "+${CurrencyFormat.format(
-                              context,
-                              goals.fold<double>(
-                                0.0,
-                                    (sum, item) => sum + item.currentOutstanding,
-                              ),
-                            )}",
+                            "+${CurrencyFormat.format(context, totalAssets)}",
                             style: const TextStyle(
                               color: Colors.green,
                               fontSize: 12,
@@ -161,7 +156,6 @@ class ForecastScreen extends StatelessWidget {
                         (context, index) => _buildGoalHorizontalCard(
                       context,
                       goals[index],
-                      provider,
                     ),
                     childCount: goals.length,
                   ),
@@ -195,22 +189,23 @@ class ForecastScreen extends StatelessWidget {
     );
   }
 
-  // ... (Hero Card code remains unchanged) ...
   Widget _buildForecastHeroCard(
       BuildContext context,
       FinanceProvider provider,
       ThemeData theme,
       List<Color> gradientColors,
+      double netWorth,
+      double totalDebt,
+      double totalAssets,
       ) {
-    final hasDebt = provider.totalCurrentDebt > 0;
-    final hasAssets = provider.getTotalAssets() > 0;
+    final hasDebt = totalDebt > 0;
+    final hasAssets = totalAssets > 0;
 
     final isLight = theme.brightness == Brightness.light;
     final heroPrimaryText = isLight ? Colors.black : Colors.white;
     final heroSecondaryText =
     isLight ? Colors.black.withOpacity(0.6) : Colors.white70;
 
-    final netWorth = provider.netWorth;
     final netWorthText = CurrencyFormat.format(context, netWorth);
 
     String leftLabel = "";
@@ -221,14 +216,15 @@ class ForecastScreen extends StatelessWidget {
 
     if (hasDebt) {
       leftLabel = "Total goals";
-      leftValue = CurrencyFormat.format(context, provider.getTotalAssets());
+      leftValue = CurrencyFormat.format(context, totalAssets);
       rightLabel = "Total debt";
-      rightValue = CurrencyFormat.format(context, provider.totalCurrentDebt);
+      rightValue = CurrencyFormat.format(context, totalDebt);
       bottomText = "Every payment is progress.";
     } else if (hasAssets) {
       leftLabel = "Goals value";
-      leftValue = CurrencyFormat.format(context, provider.getTotalAssets());
+      leftValue = CurrencyFormat.format(context, totalAssets);
       rightLabel = "Saved this month";
+      // We could add logic to sum contributions this month if needed
       rightValue = "—";
       bottomText = "You’re growing real wealth.";
     } else {
@@ -265,7 +261,8 @@ class ForecastScreen extends StatelessWidget {
               // Net Worth Glass Box
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(16),
@@ -416,7 +413,6 @@ class ForecastScreen extends StatelessWidget {
   Widget _buildLiabilityCard(
       BuildContext context,
       ForecastItem item,
-      FinanceProvider provider,
       ) {
     final theme = Theme.of(context);
     final onBg = theme.colorScheme.onSurface;
@@ -427,7 +423,6 @@ class ForecastScreen extends StatelessWidget {
           (1.0 - (item.currentOutstanding / item.targetAmount)).clamp(0.0, 1.0);
     }
 
-    // ✨ UPDATED: Correct Subtitle Logic
     String subtitle;
     switch (item.type) {
       case ForecastType.emiInterestOnly:
@@ -486,7 +481,7 @@ class ForecastScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        subtitle, // Using dynamic subtitle
+                        subtitle,
                         style: TextStyle(
                           color: onBg.withOpacity(0.5),
                           fontSize: 11,
@@ -571,7 +566,6 @@ class ForecastScreen extends StatelessWidget {
   Widget _buildGoalHorizontalCard(
       BuildContext context,
       ForecastItem item,
-      FinanceProvider provider,
       ) {
     final theme = Theme.of(context);
     final onBg = theme.colorScheme.onSurface;

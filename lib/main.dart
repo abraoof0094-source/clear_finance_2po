@@ -12,11 +12,16 @@ import 'screens/home/home_screen.dart';
 import 'screens/welcome/welcome_screen.dart';
 import 'utils/app_theme.dart';
 import 'services/welcome_service.dart';
+import 'services/database_service.dart';
 import 'widgets/app_lock_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+
+  // 🚀 Initialize Isar Database
+  final dbService = DatabaseService();
+  await dbService.db; // Wait for open() to finish before launching app
 
   runApp(
     MultiProvider(
@@ -25,7 +30,6 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ChangeNotifierProvider(create: (_) => UserProfileProvider()),
         ChangeNotifierProvider(create: (_) => PreferencesProvider()),
-        // REMOVED: ChangeNotifierProvider(create: (_) => CategoryProvider()),
       ],
       child: const ClearFinanceApp(),
     ),
@@ -68,13 +72,18 @@ class _RootDeciderState extends State<_RootDecider> {
   @override
   void initState() {
     super.initState();
-    _initApp();
+    // 🛠️ FIX: Move initialization to after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initApp();
+    });
   }
 
   Future<void> _initApp() async {
     // FinanceProvider loads categories, transactions, etc.
     final financeProvider =
     Provider.of<FinanceProvider>(context, listen: false);
+
+    // This call notifies listeners, which is safe inside this callback
     await financeProvider.loadData();
 
     final service = WelcomeService();

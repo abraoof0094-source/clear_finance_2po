@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:ui';
+import 'package:isar/isar.dart';
 
 import '../../providers/finance_provider.dart';
-import '../../providers/theme_provider.dart'; // <--- IMPORT THIS
+import '../../providers/theme_provider.dart';
 import '../../widgets/add_transaction_sheet.dart';
 import '../../models/transaction_model.dart' as model;
 import '../../models/category_model.dart';
+import '../../models/recurring_pattern.dart';
 import '../../utils/currency_format.dart';
+import '../../services/database_service.dart';
+
 import '../settings/settings_screen.dart';
 import '../analytics/analytics_screen.dart';
 import '../settings/categories_screen.dart';
@@ -23,8 +27,28 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final PageController _pageController = PageController(initialPage: 1);
 
+  // 🟢 Cache for patterns to enable "Soft Matching"
+  List<RecurringPattern> _recurringPatterns = [];
+
   int _currentNavIndex = 1;
   bool _isActivityExpanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecurringPatterns();
+  }
+
+  // 🟢 Load patterns so we can "guess" recurring transactions
+  Future<void> _loadRecurringPatterns() async {
+    final isar = DatabaseService().syncDb;
+    final patterns = await isar.recurringPatterns.where().filter().isActiveEqualTo(true).findAll();
+    if (mounted) {
+      setState(() {
+        _recurringPatterns = patterns;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -84,12 +108,14 @@ class _HomeScreenState extends State<HomeScreen> {
               CategoryBucket.liability,
               CategoryBucket.goal,
             ],
-            onSave: (tx, {required bool isEditing}) {
+            onSave: (tx, {required bool isEditing}) async {
               if (isEditing) {
                 finance.updateTransaction(tx);
               } else {
                 finance.addTransaction(tx);
               }
+              // 🟢 Refresh patterns to immediately show icon if a new rule was made
+              await _loadRecurringPatterns();
             },
           ),
         );
@@ -100,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<FinanceProvider>(context);
-    final themeProvider = Provider.of<ThemeProvider>(context); // <--- GET THEME PROVIDER
+    final themeProvider = Provider.of<ThemeProvider>(context);
     final theme = Theme.of(context);
     final onBg = theme.colorScheme.onSurface;
     final bottomBarColor = theme.bottomNavigationBarTheme.backgroundColor ??
@@ -116,7 +142,6 @@ class _HomeScreenState extends State<HomeScreen> {
         physics: const BouncingScrollPhysics(),
         children: [
           const AnalyticsScreen(),
-          // Pass the dynamic colors to the dashboard builder
           _buildDashboard(provider, theme, onBg, themeProvider.homeCardColors),
           const ForecastScreen(),
           const SettingsScreen(),
@@ -210,7 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
       FinanceProvider provider,
       ThemeData theme,
       Color onBg,
-      List<Color> gradientColors, // <--- ACCEPT DYNAMIC COLORS
+      List<Color> gradientColors,
       ) {
     final now = DateTime.now();
     final List<model.TransactionModel> allTransactions = provider.transactions;
@@ -281,7 +306,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  // PASS GRADIENT TO CARD
                   _buildSafeToSpendCard(provider, theme, hasAnyData, gradientColors),
                   const SizedBox(height: 24),
                   if (hasCurrentMonthData) ...[
@@ -427,17 +451,14 @@ class _HomeScreenState extends State<HomeScreen> {
       FinanceProvider provider,
       ThemeData theme,
       bool hasAnyData,
-      List<Color> gradientColors, // <--- ACCEPT DYNAMIC COLORS
+      List<Color> gradientColors,
       ) {
     final safe = provider.totalBalance;
     final now = DateTime.now();
-
-    // 1. Calculate Daily Average logic
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
-    final daysRemaining = daysInMonth - now.day + 1; // +1 to include today
+    final daysRemaining = daysInMonth - now.day + 1;
     final dailySafe = safe > 0 ? (safe / daysRemaining) : 0.0;
 
-    // 2. Budget Progress logic
     final mandateCats = provider.categories.where(
           (c) =>
       c.bucket == CategoryBucket.expense &&
@@ -482,14 +503,14 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: gradientColors, // <--- USE DYNAMIC COLORS
+          colors: gradientColors,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(28),
         boxShadow: [
           BoxShadow(
-            color: gradientColors.last.withOpacity(0.4), // <--- USE DYNAMIC COLOR FOR SHADOW
+            color: gradientColors.last.withOpacity(0.4),
             blurRadius: 26,
             offset: const Offset(0, 14),
           ),
@@ -499,10 +520,8 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ─── THE NEW 50/50 SPLIT ───
           Row(
             children: [
-              // LEFT: Safe to spend
               Expanded(
                 flex: 1,
                 child: Container(
@@ -557,7 +576,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              // RIGHT: Daily Average
               Expanded(
                 flex: 1,
                 child: Container(
@@ -616,8 +634,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
 
           const SizedBox(height: 16),
-
-          // ─── PROGRESS BAR ───
           if (hasAnyBudget)
             Container(
               width: double.infinity,
@@ -761,6 +777,17 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ───────────────── TRANSACTION ITEM ─────────────────
+
+  // 🟢 Helper to "Soft Match" transactions to rules
+  bool _isPotentialRecurringMatch(model.TransactionModel tx) {
+    if (_recurringPatterns.isEmpty) return false;
+    return _recurringPatterns.any((p) =>
+    p.categoryId == tx.categoryId &&
+        p.categoryBucket == tx.categoryBucket &&
+        (p.amount - tx.amount).abs() < 0.01);
+  }
+
   Widget _buildTransactionItem(
       BuildContext context,
       model.TransactionModel tx,
@@ -774,6 +801,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ? Colors.greenAccent
         : (isInvestment ? Colors.blueAccent : Colors.redAccent);
     final sign = isIncome ? "+" : "-";
+
+    final bool isRecurring =
+        (tx.recurringRuleId != null) || _isPotentialRecurringMatch(tx);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
@@ -803,13 +833,26 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  tx.categoryName,
-                  style: TextStyle(
-                    color: onBg,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      tx.categoryName,
+                      style: TextStyle(
+                        color: onBg,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    // 🟢 SHOW ICON
+                    if (isRecurring) ...[
+                      const SizedBox(width: 6),
+                      Icon(
+                        Icons.update,
+                        size: 13,
+                        color: onBg.withOpacity(0.5),
+                      ),
+                    ],
+                  ],
                 ),
                 if (tx.note != null && tx.note!.isNotEmpty) ...[
                   const SizedBox(height: 2),
@@ -858,7 +901,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (value == 'edit') {
                     _showTransactionDialog(context, tx);
                   } else if (value == 'delete') {
-                    _confirmDelete(context, provider, tx.id);
+                    // 🟢 UPDATED: Pass the full object to check recurring status
+                    _confirmDelete(context, provider, tx);
                   }
                 },
                 itemBuilder: (context) => const [
@@ -879,32 +923,61 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // 🟢 IMPROVED DELETE DIALOG
   void _confirmDelete(
       BuildContext context,
       FinanceProvider provider,
-      int id,
+      model.TransactionModel tx,
       ) {
+    // Check if this transaction is linked to a rule
+    final isLinkedToRule = tx.recurringRuleId != null;
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).dialogBackgroundColor,
         title: const Text("Delete Transaction?"),
-        content: const Text("This cannot be undone."),
+        content: Text(
+          isLinkedToRule
+              ? "This is a recurring transaction. Do you want to stop future repeats too?"
+              : "This cannot be undone.",
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text("Cancel"),
           ),
+
+          // Option 1: Delete Only This Transaction
           TextButton(
             onPressed: () {
-              provider.deleteTransaction(id);
+              provider.deleteTransaction(tx.id);
               Navigator.pop(ctx);
+              _loadRecurringPatterns(); // Refresh UI
             },
-            child: const Text(
-              "Delete",
-              style: TextStyle(color: Colors.redAccent),
+            child: Text(
+              isLinkedToRule ? "Delete This One" : "Delete",
+              style: const TextStyle(color: Colors.redAccent),
             ),
           ),
+
+          // Option 2: Delete AND Stop Recurrence (Only if linked)
+          if (isLinkedToRule)
+            TextButton(
+              onPressed: () async {
+                // Delete the transaction
+                provider.deleteTransaction(tx.id);
+                // Delete the recurring rule
+                await provider.deleteRecurringPattern(tx.recurringRuleId!);
+
+                if (context.mounted) Navigator.pop(ctx);
+                _loadRecurringPatterns(); // Refresh UI
+              },
+              child: const Text(
+                "Stop Repeating",
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+            ),
         ],
       ),
     );

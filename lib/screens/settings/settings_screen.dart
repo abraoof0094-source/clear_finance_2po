@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/user_profile.dart';
 import '../../providers/user_profile_provider.dart';
-import '../../providers/theme_provider.dart'; // <--- IMPORT THIS
+import '../../providers/theme_provider.dart';
 import '../../providers/finance_provider.dart';
 import '../../providers/preferences_provider.dart';
 import '../../services/auth_service.dart';
@@ -15,6 +15,7 @@ import '../settings/preferences_screen.dart';
 import '../settings/backup_screen.dart';
 import '../settings/support_screen.dart';
 import '../settings/appearance_screen.dart';
+import '../settings/recurring_transactions_screen.dart'; // <--- ADD IMPORT
 import '../security/security_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -43,7 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // 2. Fetch Theme & Dynamic Colors
     final themeProvider = context.watch<ThemeProvider>();
     final String currentThemeName = themeProvider.currentThemeName;
-    final List<Color> settingsGradient = themeProvider.settingsCardColors; // <--- FETCH DYNAMIC GRADIENT
+    final List<Color> settingsGradient = themeProvider.settingsCardColors;
 
     // 3. Fetch Category Count
     final financeProvider = context.watch<FinanceProvider>();
@@ -92,13 +93,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     isAppLockEnabled,
                     currentThemeName,
                     categoryCount,
-                    settingsGradient, // <--- PASS DYNAMIC GRADIENT
+                    settingsGradient,
                   ),
 
                   const SizedBox(height: 28),
 
                   _buildSectionHeader("Account & Preferences", subTextColor),
                   _buildSettingsGroup(cardColor, borderColor, isDark, [
+                    // 🔁 RECURRING TRANSACTIONS TILE ADDED HERE
+                    _buildTile(
+                      icon: Icons.autorenew_rounded,
+                      title: "Subscriptions & Recurring",
+                      subtitle: "Manage auto-logged expenses",
+                      color: Colors.blueAccent,
+                      onBg: onBg,
+                      subTextColor: subTextColor,
+                      onTap: () => _navTo(const RecurringTransactionsScreen()),
+                    ),
                     _buildTile(
                       icon: Icons.palette_rounded,
                       title: "Appearance",
@@ -159,6 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ]),
 
                   const SizedBox(height: 24),
+                  // ... (Rest of the file remains identical)
                   _buildSectionHeader("Data Management", subTextColor),
                   _buildSettingsGroup(cardColor, borderColor, isDark, [
                     _buildTile(
@@ -230,30 +242,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ───────── HERO CARD ─────────
-
+  // ... (Keep existing helpers: _buildSettingsCard, _buildMiniStatusRow, _navTo, etc.)
   Widget _buildSettingsCard(
       UserProfile profile,
       bool isAppLockOn,
       String themeName,
       int catCount,
-      List<Color> gradientColors, // <--- ACCEPT DYNAMIC COLORS
+      List<Color> gradientColors,
       ) {
-    // 2. Black Text (as requested in previous snippet, kept for consistency)
-    // Note: If dynamic colors are very dark, you might want to switch this to White.
+    // (Your existing code here)
     const textColor = Colors.black;
     final subTextColor = Colors.black.withOpacity(0.7);
-
-    // 3. Inner box styling to support black text visibility
-    final boxColor = Colors.white
-        .withOpacity(0.2); // Semi-transparent white to lift contrast
-
+    final boxColor = Colors.white.withOpacity(0.2);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: gradientColors, // <--- USE DYNAMIC COLORS
+          colors: gradientColors,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -268,7 +274,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       child: Column(
         children: [
-          // ─── ROW 1: PROFILE ───
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -311,16 +316,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ],
-                    if (profile.phone.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        profile.phone,
-                        style: TextStyle(
-                          color: subTextColor, // Dark Gray
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -341,8 +336,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
 
           const SizedBox(height: 24),
-
-          // ─── ROW 2: GLASS BOXES ───
           Row(
             children: [
               // BOX 1: STORAGE

@@ -1,75 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:isar/isar.dart';
 
-/// How a forecast item behaves over time.
-///
-/// Index 0–2 are liabilities (money you owe).
-/// Index 3 is an asset/goal (money you are building up).
+part 'forecast_item.g.dart';
+
 enum ForecastType {
-  /// Amortizing EMI loan where each EMI has interest + principal.
-  emiAmortized,     // 0: Liability (Car/Home EMI)
-
-  /// Interest-only debt (principal not reduced by regular payments).
-  emiInterestOnly,  // 1: Liability (Gold loan / interest-led)
-
-  /// Simple debt without detailed EMI schedule.
-  debtSimple,       // 2: Liability (personal debt, ad-hoc payments)
-
-  /// Savings/investment goal with a target amount.
-  goalTarget,       // 3: Asset (Emergency fund, Opportunity fund, Goals)
+  emiAmortized, // 0
+  emiInterestOnly, // 1
+  debtSimple, // 2
+  goalTarget, // 3
 }
 
-/// A long-term item shown in the Forecast screen (loan or goal).
-///
-/// - For liabilities, [currentOutstanding] is outstanding balance.
-/// - For goals, [currentOutstanding] is how much you’ve accumulated so far.
-/// - [interestRate] and [monthlyEmiOrContribution] are used for projections.
-/// - [billingDay] is the usual EMI / contribution date (1–28).
-/// - [colorValue] stores a color value for consistent theming.
-/// - [categoryId] (optional) links this forecast item to a category used by transactions.
+@collection
 class ForecastItem {
-  /// String identifier (e.g. UUID or timestamp-based).
+  /// Isar auto-incrementing ID.
+  Id isarId = Isar.autoIncrement;
+
+  /// String UUID (Kept unique for logic).
+  @Index(unique: true)
   final String id;
 
-  /// Display name, e.g. "Home loan" or "Emergency fund".
   final String name;
-
-  /// Emoji or short icon, e.g. "🏠", "🏦".
   final String icon;
 
-  /// Behavior type (see [ForecastType] docs above).
+  @Enumerated(EnumType.ordinal) // Stores as 0, 1, 2...
   final ForecastType type;
 
-  /// Current outstanding amount (for debts) or current saved amount (for goals).
   double currentOutstanding;
-
-  /// For debts: original principal or target payoff.
-  /// For goals: target amount to reach.
   double targetAmount;
-
-  /// Annual interest rate in percent (e.g. 10 for 10%), if applicable.
   double interestRate;
-
-  /// Planned monthly EMI or monthly contribution (0 allowed).
-  ///
-  /// Used for projections and to detect “EMI-like” payments by amount.
   double monthlyEmiOrContribution;
-
-  /// Usual EMI / contribution date in month (1–28).
-  ///
-  /// Used only for projection timeline, not for classifying payments.
   int billingDay;
-
-  /// ARGB color value used to style cards/charts.
   int colorValue;
 
-  /// Optional link back to the category this item is based on.
-  ///
-  /// When a transaction is added in a Goal/Invest/Liability category, you can:
-  /// - Find or create a [ForecastItem] with this [categoryId].
-  /// - Update [currentOutstanding] so Forecast always reflects real cashflows.
   final int? categoryId;
 
   ForecastItem({
+    this.isarId = Isar.autoIncrement,
     required this.id,
     required this.name,
     required this.icon,
@@ -83,16 +49,14 @@ class ForecastItem {
     this.categoryId,
   });
 
-  /// True if this item represents a liability (debt).
-  ///
-  /// By convention, the first three ForecastType values are debts.
   bool get isLiability => type.index <= 2;
 
-  /// Convenience getter to build a Color from [colorValue] when needed.
+  // Ignore: Isar doesn't store getters/functions, which is fine.
+  @ignore
   Color get color => Color(colorValue);
 
-  /// Create a copy with some fields changed (used to attach categoryId or edit values).
   ForecastItem copyWith({
+    Id? isarId,
     String? id,
     String? name,
     String? icon,
@@ -106,6 +70,7 @@ class ForecastItem {
     int? categoryId,
   }) {
     return ForecastItem(
+      isarId: isarId ?? this.isarId,
       id: id ?? this.id,
       name: name ?? this.name,
       icon: icon ?? this.icon,
@@ -121,13 +86,14 @@ class ForecastItem {
     );
   }
 
-  /// Serialize to JSON map for persistence.
+  // ─── LEGACY JSON SUPPORT ───
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
       'icon': icon,
-      'type': type.index, // Save enum as integer index.
+      'type': type.index,
       'currentOutstanding': currentOutstanding,
       'targetAmount': targetAmount,
       'interestRate': interestRate,
@@ -138,13 +104,12 @@ class ForecastItem {
     };
   }
 
-  /// Construct a ForecastItem from a JSON map.
   factory ForecastItem.fromJson(Map<String, dynamic> json) {
     return ForecastItem(
       id: json['id'] as String,
       name: json['name'] as String,
       icon: json['icon'] as String,
-      type: ForecastType.values[json['type'] as int], // Integer → enum.
+      type: ForecastType.values[json['type'] as int],
       currentOutstanding: (json['currentOutstanding'] as num).toDouble(),
       targetAmount: (json['targetAmount'] as num).toDouble(),
       interestRate: (json['interestRate'] as num).toDouble(),
@@ -152,7 +117,7 @@ class ForecastItem {
       (json['monthlyEmiOrContribution'] as num).toDouble(),
       billingDay: (json['billingDay'] as num?)?.toInt() ?? 1,
       colorValue: json['colorValue'] as int,
-      categoryId: json['categoryId'] as int?, // nullable
+      categoryId: json['categoryId'] as int?,
     );
   }
 }

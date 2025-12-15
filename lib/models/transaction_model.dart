@@ -1,56 +1,64 @@
 import 'dart:convert';
+import 'package:isar/isar.dart';
+import 'category_model.dart'; // Ensure CategoryBucket and helpers are here
 
-import 'category_model.dart'; // CategoryBucket + helpers
+part 'transaction_model.g.dart';
 
-/// High-level type of a transaction.
 enum TransactionType {
   income,
   expense,
   investment,
 }
 
-/// Convert TransactionType enum → string for persistence.
+/// Convert TransactionType enum → string for persistence/JSON.
 String transactionTypeToString(TransactionType type) {
-  switch (type) {
-    case TransactionType.income:
-      return 'income';
-    case TransactionType.expense:
-      return 'expense';
-    case TransactionType.investment:
-      return 'investment';
-  }
+  return type.name;
 }
 
-/// Convert string → TransactionType enum (defaults to expense).
+/// Convert string → TransactionType enum.
 TransactionType transactionTypeFromString(String? value) {
-  switch (value) {
-    case 'income':
-      return TransactionType.income;
-    case 'expense':
-      return TransactionType.expense;
-    case 'investment':
-      return TransactionType.investment;
-    default:
-      return TransactionType.expense;
+  if (value == null) return TransactionType.expense;
+  try {
+    return TransactionType.values.firstWhere((e) => e.name == value);
+  } catch (_) {
+    return TransactionType.expense;
   }
 }
 
-/// Represents a single money movement (income, expense, or investment).
+@collection
 class TransactionModel {
+  /// Isar auto-incrementing ID.
+  Id isarId = Isar.autoIncrement;
+
+  /// Your original logic ID (timestamp based).
+  @Index(unique: true)
   final int id;
+
   final double amount;
+
+  @Enumerated(EnumType.name) // Store as "income", "expense" etc.
   final TransactionType type;
 
-  /// Optional link to the CategoryModel this transaction belongs to.
+  @Index() // Index for fast filtering by category
   final int? categoryId;
 
   final String categoryName;
   final String categoryIcon;
+
+  @Index() // Index for fast sorting/filtering by date
   final DateTime date;
+
   final String? note;
+
+  @Enumerated(EnumType.name)
   final CategoryBucket categoryBucket;
 
+  // 🟢 NEW: Link to parent Recurring Pattern (Nullable)
+  @Index()
+  final int? recurringRuleId;
+
   TransactionModel({
+    this.isarId = Isar.autoIncrement,
     required this.id,
     required this.amount,
     required this.type,
@@ -60,9 +68,11 @@ class TransactionModel {
     required this.date,
     this.note,
     required this.categoryBucket,
+    this.recurringRuleId,
   });
 
   TransactionModel copyWith({
+    Id? isarId,
     int? id,
     double? amount,
     TransactionType? type,
@@ -72,8 +82,10 @@ class TransactionModel {
     DateTime? date,
     String? note,
     CategoryBucket? categoryBucket,
+    int? recurringRuleId,
   }) {
     return TransactionModel(
+      isarId: isarId ?? this.isarId,
       id: id ?? this.id,
       amount: amount ?? this.amount,
       type: type ?? this.type,
@@ -83,8 +95,11 @@ class TransactionModel {
       date: date ?? this.date,
       note: note ?? this.note,
       categoryBucket: categoryBucket ?? this.categoryBucket,
+      recurringRuleId: recurringRuleId ?? this.recurringRuleId,
     );
   }
+
+  // ─── LEGACY JSON SUPPORT ───
 
   Map<String, dynamic> toJson() {
     return {
@@ -97,6 +112,7 @@ class TransactionModel {
       'date': date.toIso8601String(),
       'note': note,
       'categoryBucket': categoryBucketToString(categoryBucket),
+      'recurringRuleId': recurringRuleId, // Include in JSON
     };
   }
 
@@ -110,8 +126,8 @@ class TransactionModel {
       categoryIcon: json['categoryIcon'] as String? ?? '📝',
       date: DateTime.parse(json['date'] as String),
       note: json['note'] as String?,
-      categoryBucket:
-      categoryBucketFromString(json['categoryBucket'] as String?),
+      categoryBucket: categoryBucketFromString(json['categoryBucket'] as String?),
+      recurringRuleId: json['recurringRuleId'] as int?, // Read from JSON
     );
   }
 

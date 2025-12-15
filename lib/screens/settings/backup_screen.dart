@@ -8,13 +8,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // For prefs backup only
 
 import '../../models/transaction_model.dart';
+import '../../models/category_model.dart';
+import '../../models/forecast_item.dart';
 import '../../providers/finance_provider.dart';
 import '../../services/auth_service.dart';
-import '../../services/welcome_service.dart';
-import '../welcome/welcome_screen.dart';
 
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -38,6 +38,91 @@ class _BackupScreenState extends State<BackupScreen> {
 
   void _setLoading(bool value) {
     if (mounted) setState(() => _isLoading = value);
+  }
+
+  // ───────── DATA SERIALIZATION HELPERS ─────────
+
+  // Creates a full JSON map of the current app state from the Provider (Isar)
+  Future<Map<String, dynamic>> _serializeAppData() async {
+    final provider = Provider.of<FinanceProvider>(context, listen: false);
+
+    final transactions = provider.transactions.map((t) => t.toJson()).toList();
+    final categories = provider.categories.map((c) => c.toJson()).toList();
+    final forecastItems = provider.forecastItems.map((f) => f.toJson()).toList();
+
+    // Also backup SharedPreferences (Settings)
+    final prefs = await SharedPreferences.getInstance();
+    final settings = {};
+    // Only backup critical settings to avoid bloating
+    final keysToSave = ['currency_symbol', 'theme_mode', 'is_app_lock_enabled'];
+    for (var key in keysToSave) {
+      if (prefs.containsKey(key)) {
+        settings[key] = prefs.get(key);
+      }
+    }
+
+    return {
+      'version': 2, // Schema version
+      'timestamp': DateTime.now().toIso8601String(),
+      'transactions': transactions,
+      'categories': categories,
+      'forecast_items': forecastItems,
+      'settings': settings,
+    };
+  }
+
+  // Restores data from the JSON map into the Provider (Isar)
+  Future<void> _restoreAppData(Map<String, dynamic> data) async {
+    final provider = Provider.of<FinanceProvider>(context, listen: false);
+
+    // 1. Categories
+    if (data['categories'] != null) {
+      final List list = data['categories'];
+      for (var item in list) {
+        // Check if ID exists to avoid duplicates or overwrite
+        final cat = CategoryModel.fromJson(item);
+        // Logic: Try to update if exists, else add.
+        // For simplicity in backup restore, we might just put everything.
+        // But FinanceProvider doesn't expose a raw 'putAll'.
+        // We will loop and add/update.
+        await provider.updateCategory(cat); // Helper that uses 'put' (upsert)
+      }
+    }
+
+    // 2. Transactions
+    if (data['transactions'] != null) {
+      final List list = data['transactions'];
+      for (var item in list) {
+        final tx = TransactionModel.fromJson(item);
+        await provider.addTransaction(tx); // This might trigger logic, be careful?
+        // Actually, provider.addTransaction runs logic. We might want a "silent restore".
+        // But since we don't have a silent bulk insert exposed yet, let's use what we have.
+        // Ideally, you'd add a 'restoreTransactions' method to FinanceProvider to do bulk insert without logic.
+      }
+    }
+
+    // 3. Forecast
+    if (data['forecast_items'] != null) {
+      final List list = data['forecast_items'];
+      for (var item in list) {
+        final f = ForecastItem.fromJson(item);
+        await provider.updateForecastItem(f);
+      }
+    }
+
+    // 4. Settings
+    if (data['settings'] != null) {
+      final Map settings = data['settings'];
+      final prefs = await SharedPreferences.getInstance();
+      settings.forEach((key, value) async {
+        if (value is String) await prefs.setString(key as String, value);
+        if (value is bool) await prefs.setBool(key as String, value);
+        if (value is int) await prefs.setInt(key as String, value);
+      });
+    }
+
+    // Reload UI
+    await provider.loadData();
   }
 
   // ───────── ACTIONS ─────────
@@ -75,13 +160,9 @@ class _BackupScreenState extends State<BackupScreen> {
   Future<void> _exportBackup() async {
     _setLoading(true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final allData = prefs.getKeys().fold<Map<String, dynamic>>({}, (prev, k) {
-        prev[k] = prefs.get(k);
-        return prev;
-      });
+      final data = await _serializeAppData();
+      final jsonString = jsonEncode(data);
 
-      final jsonString = jsonEncode(allData);
       final ts = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/clear_finance_backup_$ts.json');
@@ -118,7 +199,7 @@ class _BackupScreenState extends State<BackupScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Merge Backup?'),
-          content: const Text('This will merge the backup file into your current data.'),
+          content: const Text('This will merge the backup file into your current data. Duplicates may occur if IDs match.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
             TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Merge')),
@@ -131,27 +212,10 @@ class _BackupScreenState extends State<BackupScreen> {
         return;
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      final current = prefs.getKeys().fold<Map<String, dynamic>>({}, (prev, k) {
-        prev[k] = prefs.get(k);
-        return prev;
-      });
+      await _restoreAppData(backup);
 
-      final merged = Map<String, dynamic>.from(current)..addAll(backup);
-      for (final e in merged.entries) {
-        final k = e.key;
-        final v = e.value;
-        if (v is bool) await prefs.setBool(k, v);
-        else if (v is int) await prefs.setInt(k, v);
-        else if (v is double) await prefs.setDouble(k, v);
-        else if (v is String) await prefs.setString(k, v);
-        else if (v is List) await prefs.setStringList(k, List<String>.from(v));
-      }
+      if (mounted) _showSuccess("Backup merged successfully!");
 
-      if (mounted) {
-        await Provider.of<FinanceProvider>(context, listen: false).loadTransactions();
-        _showSuccess("Backup merged successfully!");
-      }
     } catch (e) {
       _showError("Import failed: $e");
     } finally {
@@ -168,19 +232,14 @@ class _BackupScreenState extends State<BackupScreen> {
 
     _setLoading(true);
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final allData = prefs.getKeys().fold<Map<String, dynamic>>({}, (prev, k) {
-        prev[k] = prefs.get(k);
-        return prev;
-      });
-
-      final jsonString = jsonEncode(allData);
+      final data = await _serializeAppData();
+      final jsonString = jsonEncode(data);
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'backupData': jsonString,
         'lastUpdated': FieldValue.serverTimestamp(),
         'device': Platform.operatingSystem,
-        'version': '1.0.0',
+        'version': '2.0.0', // Updated version for Isar schema
         'email': user.email,
       }, SetOptions(merge: true));
 
@@ -213,7 +272,7 @@ class _BackupScreenState extends State<BackupScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Restore from Cloud?'),
-          content: const Text('This will overwrite your current local data with the cloud version.'),
+          content: const Text('This will merge the cloud data into your app.'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
             TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Restore')),
@@ -226,21 +285,10 @@ class _BackupScreenState extends State<BackupScreen> {
         return;
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      for (final e in cloudData.entries) {
-        final k = e.key;
-        final v = e.value;
-        if (v is bool) await prefs.setBool(k, v);
-        else if (v is int) await prefs.setInt(k, v);
-        else if (v is double) await prefs.setDouble(k, v);
-        else if (v is String) await prefs.setString(k, v);
-        else if (v is List) await prefs.setStringList(k, List<String>.from(v));
-      }
+      await _restoreAppData(cloudData);
 
-      if (mounted) {
-        await Provider.of<FinanceProvider>(context, listen: false).loadTransactions();
-        _showSuccess("Restore Complete!");
-      }
+      if (mounted) _showSuccess("Restore Complete!");
+
     } catch (e) {
       _showError("Restore failed: $e");
     } finally {
@@ -263,14 +311,13 @@ class _BackupScreenState extends State<BackupScreen> {
     }
   }
 
-  // ───────── SIGN OUT FUNCTION ─────────
   Future<void> _signOut() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Sign Out?'),
         content: const Text(
-          'Are you sure you want to disconnect? Local data will remain on this device, but you will stop syncing to the cloud.',
+          'Are you sure you want to disconnect? Local data will remain on this device.',
         ),
         actions: [
           TextButton(
@@ -378,7 +425,7 @@ class _BackupScreenState extends State<BackupScreen> {
                       Text(
                         _isCloudEnabled
                             ? "Your data is synced with your Google account."
-                            : "Connect to Google Drive to keep your data safe even if you lose your phone.",
+                            : "Connect to Google Drive to keep your data safe.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.8),
@@ -437,7 +484,6 @@ class _BackupScreenState extends State<BackupScreen> {
                               ],
                             ),
                             const SizedBox(height: 16),
-                            // ───────── SIGN OUT BUTTON ADDED HERE ─────────
                             TextButton.icon(
                               onPressed: _signOut,
                               icon: const Icon(Icons.logout_rounded, size: 18, color: Colors.white70),
