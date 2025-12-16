@@ -108,13 +108,9 @@ class _HomeScreenState extends State<HomeScreen> {
               CategoryBucket.liability,
               CategoryBucket.goal,
             ],
+            // 🟢 FIX: AddTransactionSheet already saves to provider.
+            // Here we only refresh recurring cache / UI.
             onSave: (tx, {required bool isEditing}) async {
-              if (isEditing) {
-                finance.updateTransaction(tx);
-              } else {
-                finance.addTransaction(tx);
-              }
-              // 🟢 Refresh patterns to immediately show icon if a new rule was made
               await _loadRecurringPatterns();
             },
           ),
@@ -129,8 +125,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final themeProvider = Provider.of<ThemeProvider>(context);
     final theme = Theme.of(context);
     final onBg = theme.colorScheme.onSurface;
-    final bottomBarColor = theme.bottomNavigationBarTheme.backgroundColor ??
-        theme.colorScheme.surface;
+    final bottomBarColor =
+        theme.bottomNavigationBarTheme.backgroundColor ?? theme.colorScheme.surface;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -246,9 +242,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 
-    final groupedTransactions =
-    _groupTransactionsByWeek(currentMonthTransactions);
-
+    final groupedTransactions = _groupTransactionsByWeek(currentMonthTransactions);
     final bool hasCurrentMonthData = currentMonthTransactions.isNotEmpty;
 
     return SafeArea(
@@ -419,8 +413,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     for (var tx in transactions) {
       String label;
-      if (tx.date
-          .isAfter(startOfThisWeek.subtract(const Duration(seconds: 1)))) {
+      if (tx.date.isAfter(startOfThisWeek.subtract(const Duration(seconds: 1)))) {
         label = "This week";
       } else if (tx.date
           .isAfter(startOfLastWeek.subtract(const Duration(seconds: 1)))) {
@@ -526,8 +519,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 flex: 1,
                 child: Container(
                   height: 110,
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(24),
@@ -580,8 +573,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 flex: 1,
                 child: Container(
                   height: 110,
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(24),
@@ -594,7 +587,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           const Icon(
                             Icons.sunny,
-                            color: Color(0xFFFACC15), // Electric yellow
+                            color: Color(0xFFFACC15),
                             size: 14,
                           ),
                           const SizedBox(width: 6),
@@ -632,12 +625,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-
           const SizedBox(height: 16),
           if (hasAnyBudget)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(20),
@@ -678,7 +671,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Container(
                                     width: barWidth * value,
                                     decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(999),
+                                      borderRadius:
+                                      BorderRadius.circular(999),
                                       gradient: LinearGradient(
                                         colors: [
                                           color.withOpacity(0.9),
@@ -744,8 +738,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               child: Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(20),
@@ -782,10 +776,12 @@ class _HomeScreenState extends State<HomeScreen> {
   // 🟢 Helper to "Soft Match" transactions to rules
   bool _isPotentialRecurringMatch(model.TransactionModel tx) {
     if (_recurringPatterns.isEmpty) return false;
-    return _recurringPatterns.any((p) =>
-    p.categoryId == tx.categoryId &&
-        p.categoryBucket == tx.categoryBucket &&
-        (p.amount - tx.amount).abs() < 0.01);
+    return _recurringPatterns.any(
+          (p) =>
+      p.categoryId == tx.categoryId &&
+          p.categoryBucket == tx.categoryBucket &&
+          (p.amount - tx.amount).abs() < 0.01,
+    );
   }
 
   Widget _buildTransactionItem(
@@ -843,7 +839,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    // 🟢 SHOW ICON
                     if (isRecurring) ...[
                       const SizedBox(width: 6),
                       Icon(
@@ -901,7 +896,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (value == 'edit') {
                     _showTransactionDialog(context, tx);
                   } else if (value == 'delete') {
-                    // 🟢 UPDATED: Pass the full object to check recurring status
                     _confirmDelete(context, provider, tx);
                   }
                 },
@@ -929,7 +923,6 @@ class _HomeScreenState extends State<HomeScreen> {
       FinanceProvider provider,
       model.TransactionModel tx,
       ) {
-    // Check if this transaction is linked to a rule
     final isLinkedToRule = tx.recurringRuleId != null;
 
     showDialog(
@@ -947,31 +940,24 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => Navigator.pop(ctx),
             child: const Text("Cancel"),
           ),
-
-          // Option 1: Delete Only This Transaction
           TextButton(
             onPressed: () {
               provider.deleteTransaction(tx.id);
               Navigator.pop(ctx);
-              _loadRecurringPatterns(); // Refresh UI
+              _loadRecurringPatterns();
             },
             child: Text(
               isLinkedToRule ? "Delete This One" : "Delete",
               style: const TextStyle(color: Colors.redAccent),
             ),
           ),
-
-          // Option 2: Delete AND Stop Recurrence (Only if linked)
           if (isLinkedToRule)
             TextButton(
               onPressed: () async {
-                // Delete the transaction
                 provider.deleteTransaction(tx.id);
-                // Delete the recurring rule
                 await provider.deleteRecurringPattern(tx.recurringRuleId!);
-
                 if (context.mounted) Navigator.pop(ctx);
-                _loadRecurringPatterns(); // Refresh UI
+                _loadRecurringPatterns();
               },
               child: const Text(
                 "Stop Repeating",

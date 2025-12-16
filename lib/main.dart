@@ -1,4 +1,3 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
@@ -99,9 +98,60 @@ class _RootDeciderState extends State<_RootDecider> {
 
   @override
   Widget build(BuildContext context) {
-    // While loading, show nothing special to avoid a flashing spinner
+    // 🟢 UPDATED: Minimal Splash Screen with Linear Bar
     if (_isLoading) {
-      return const SizedBox.shrink();
+      final theme = Theme.of(context);
+      return Scaffold(
+        backgroundColor: theme.scaffoldBackgroundColor,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // 1. App Logo
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF3B82F6).withOpacity(0.3),
+                      blurRadius: 15,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.account_balance_wallet_rounded,
+                  size: 40,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 40),
+
+              // 2. Subtle Linear Progress Bar
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 140),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: LinearProgressIndicator(
+                    minHeight: 4,
+                    // Active color = App Primary
+                    color: theme.colorScheme.primary,
+                    // Background = Primary with low opacity
+                    backgroundColor: theme.colorScheme.primary.withOpacity(0.15),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     if (!_hasSeenWelcome) {

@@ -86,6 +86,17 @@ class _SubscriptionCard extends StatelessWidget {
 
   const _SubscriptionCard({required this.pattern, required this.currency});
 
+  // Helper to get category name from Provider if not stored in pattern
+  String _getCategoryName(BuildContext context, int catId) {
+    try {
+      final provider = Provider.of<FinanceProvider>(context, listen: false);
+      final cat = provider.categories.firstWhere((c) => c.id == catId);
+      return cat.name;
+    } catch (e) {
+      return pattern.categoryBucket.name.toUpperCase();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -93,8 +104,14 @@ class _SubscriptionCard extends StatelessWidget {
     final onBg = theme.colorScheme.onSurface;
 
     final daysLeft = pattern.nextDueDate.difference(DateTime.now()).inDays;
-    String dueText = daysLeft < 0 ? "Overdue" : (daysLeft == 0 ? "Due Today" : "Due in $daysLeft days");
+    String dueText = daysLeft < 0
+        ? "Overdue"
+        : (daysLeft == 0 ? "Due Today" : "Due in $daysLeft days");
+
     Color dueColor = daysLeft <= 0 ? Colors.redAccent : onBg.withOpacity(0.4);
+
+    // Resolve category name
+    final categorySubtitle = _getCategoryName(context, pattern.categoryId);
 
     return Dismissible(
       key: Key(pattern.id.toString()),
@@ -135,8 +152,14 @@ class _SubscriptionCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // TITLE (from Note)
                     Text(pattern.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: onBg)),
-                    const SizedBox(height: 4),
+
+                    // SUBTITLE (Category Name)
+                    const SizedBox(height: 2),
+                    Text(categorySubtitle, style: TextStyle(fontSize: 12, color: onBg.withOpacity(0.6), fontWeight: FontWeight.w500)),
+
+                    const SizedBox(height: 6),
                     Row(
                       children: [
                         Container(
@@ -156,7 +179,6 @@ class _SubscriptionCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Active Toggle
                   SizedBox(
                     height: 24,
                     child: Switch(
@@ -171,7 +193,10 @@ class _SubscriptionCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Text(DateFormat('MMM d').format(pattern.nextDueDate), style: TextStyle(fontSize: 12, color: dueColor, fontWeight: FontWeight.w600)),
+                  Text(
+                      DateFormat('MMM d').format(pattern.nextDueDate),
+                      style: TextStyle(fontSize: 12, color: dueColor, fontWeight: FontWeight.w600)
+                  ),
                 ],
               ),
             ],
@@ -205,9 +230,6 @@ class _SubscriptionCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────
-// 📝 EDITED SHEET WIDGET (Fixed Overlap & Currency)
-// ─────────────────────────────────────────────
 class _EditRecurringSheet extends StatefulWidget {
   final RecurringPattern pattern;
   const _EditRecurringSheet({required this.pattern});
@@ -220,7 +242,6 @@ class _EditRecurringSheetState extends State<_EditRecurringSheet> {
   late TextEditingController _amountCtrl;
   late RecurrenceFrequency _frequency;
   late DateTime _nextDate;
-  late bool _isActive;
 
   @override
   void initState() {
@@ -228,22 +249,17 @@ class _EditRecurringSheetState extends State<_EditRecurringSheet> {
     _amountCtrl = TextEditingController(text: widget.pattern.amount.toStringAsFixed(0));
     _frequency = widget.pattern.frequency;
     _nextDate = widget.pattern.nextDueDate;
-    _isActive = widget.pattern.isActive;
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final onBg = theme.colorScheme.onSurface;
-
-    // 💲 Get Dynamic Currency
     final currencySymbol = context.watch<PreferencesProvider>().currencySymbol;
-
-    // 📱 Fix Bottom Overlap (Keyboard + Safe Area)
     final bottomPadding = MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + 24;
 
     return Container(
-      padding: EdgeInsets.fromLTRB(24, 24, 24, bottomPadding), // Applied dynamic padding
+      padding: EdgeInsets.fromLTRB(24, 24, 24, bottomPadding),
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -265,7 +281,6 @@ class _EditRecurringSheetState extends State<_EditRecurringSheet> {
           ),
           const SizedBox(height: 20),
 
-          // 1. Amount Input (With Dynamic Currency)
           TextField(
             controller: _amountCtrl,
             keyboardType: TextInputType.number,
@@ -273,17 +288,12 @@ class _EditRecurringSheetState extends State<_EditRecurringSheet> {
             decoration: InputDecoration(
               labelText: "Amount",
               labelStyle: TextStyle(color: onBg.withOpacity(0.5)),
-              // Replaced hardcoded Icon with dynamic Text
               prefixIcon: Container(
                 width: 48,
                 alignment: Alignment.center,
                 child: Text(
                   currencySymbol,
-                  style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: onBg.withOpacity(0.5)
-                  ),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: onBg.withOpacity(0.5)),
                 ),
               ),
               filled: true,
@@ -293,7 +303,6 @@ class _EditRecurringSheetState extends State<_EditRecurringSheet> {
           ),
           const SizedBox(height: 16),
 
-          // 2. Frequency Dropdown
           DropdownButtonFormField<RecurrenceFrequency>(
             value: _frequency,
             dropdownColor: theme.cardColor,
@@ -316,7 +325,6 @@ class _EditRecurringSheetState extends State<_EditRecurringSheet> {
           ),
           const SizedBox(height: 16),
 
-          // 3. Next Due Date Picker
           InkWell(
             onTap: _pickDate,
             borderRadius: BorderRadius.circular(12),
@@ -343,7 +351,6 @@ class _EditRecurringSheetState extends State<_EditRecurringSheet> {
           ),
           const SizedBox(height: 24),
 
-          // Save Button (Safe from overlap now)
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -367,7 +374,7 @@ class _EditRecurringSheetState extends State<_EditRecurringSheet> {
       context: context,
       initialDate: _nextDate,
       firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 1000)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
     );
     if (picked != null) setState(() => _nextDate = picked);
   }
@@ -375,14 +382,12 @@ class _EditRecurringSheetState extends State<_EditRecurringSheet> {
   Future<void> _saveChanges() async {
     final isar = DatabaseService().syncDb;
     final newAmount = double.tryParse(_amountCtrl.text) ?? widget.pattern.amount;
-
     await isar.writeTxn(() async {
       widget.pattern.amount = newAmount;
       widget.pattern.frequency = _frequency;
       widget.pattern.nextDueDate = _nextDate;
       await isar.recurringPatterns.put(widget.pattern);
     });
-
     if (mounted) Navigator.pop(context);
   }
 
@@ -391,15 +396,14 @@ class _EditRecurringSheetState extends State<_EditRecurringSheet> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text("Delete?"),
-        content: const Text("Are you sure you want to stop this subscription?"),
+        title: const Text("Stop Subscription?"),
+        content: const Text("This removes the rule. Past transactions are safe."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Delete", style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Stop", style: TextStyle(color: Colors.red))),
         ],
       ),
     );
-
     if (confirm == true) {
       await isar.writeTxn(() async {
         await isar.recurringPatterns.delete(widget.pattern.id);

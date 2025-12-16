@@ -110,15 +110,69 @@ class _AppLockGateState extends State<AppLockGate>
   Widget build(BuildContext context) {
     final prefs = context.watch<PreferencesProvider>();
 
-    // Lock OFF or already unlocked → show app
+    // 1. If Lock is OFF or user is ALREADY authenticated -> Show the App
     if (!prefs.isAppLockEnabled || _authenticated) {
       return widget.child;
     }
 
-    // Locked: show an empty scaffold with same background as app
+    // 2. If Locked -> Show "Locked" Screen with a Button
     final theme = Theme.of(context);
+    final onBg = theme.colorScheme.onSurface;
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
+      body: SizedBox.expand(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Big Lock Icon
+            Icon(
+              Icons.lock_outline_rounded,
+              size: 64,
+              color: onBg.withOpacity(0.5),
+            ),
+            const SizedBox(height: 24),
+
+            // Title
+            Text(
+              "Clear Finance is Locked",
+              style: TextStyle(
+                color: onBg,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Subtitle
+            Text(
+              "Please authenticate to continue",
+              style: TextStyle(
+                color: onBg.withOpacity(0.6),
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 32),
+
+            // 🟢 THE NEW BUTTON
+            // This allows the user to manually trigger the prompt
+            // if the auto-prompt failed or was dismissed.
+            ElevatedButton.icon(
+              onPressed: _authenticate, // <--- Calls the same function
+              icon: const Icon(Icons.fingerprint_rounded),
+              label: const Text("Tap to Unlock"),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
