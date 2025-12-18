@@ -57,7 +57,7 @@ class ForecastScreen extends StatelessWidget {
                       context,
                       provider, // We pass provider, but use local values for display if needed
                       theme,
-                      themeProvider.forecastCardColors,
+                      themeProvider.forecastCardColors, // <--- PASS DYNAMIC GRADIENT
                       netWorth,
                       totalLiability,
                       totalAssets,
@@ -91,7 +91,7 @@ class ForecastScreen extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            "-${CurrencyFormat.format(context, totalLiability)}",
+                            "-${CurrencyFormat.formatCompact(context, totalLiability)}",
                             style: const TextStyle(
                               color: Colors.redAccent,
                               fontSize: 12,
@@ -139,7 +139,7 @@ class ForecastScreen extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            "+${CurrencyFormat.format(context, totalAssets)}",
+                            "+${CurrencyFormat.formatCompact(context, totalAssets)}",
                             style: const TextStyle(
                               color: Colors.green,
                               fontSize: 12,
@@ -193,7 +193,7 @@ class ForecastScreen extends StatelessWidget {
       BuildContext context,
       FinanceProvider provider,
       ThemeData theme,
-      List<Color> gradientColors,
+      List<Color> gradientColors, // <--- ACCEPT DYNAMIC COLORS
       double netWorth,
       double totalDebt,
       double totalAssets,
@@ -206,7 +206,7 @@ class ForecastScreen extends StatelessWidget {
     final heroSecondaryText =
     isLight ? Colors.black.withOpacity(0.6) : Colors.white70;
 
-    final netWorthText = CurrencyFormat.format(context, netWorth);
+    final netWorthText = CurrencyFormat.formatCompact(context, netWorth);
 
     String leftLabel = "";
     String leftValue = "";
@@ -216,17 +216,17 @@ class ForecastScreen extends StatelessWidget {
 
     if (hasDebt) {
       leftLabel = "Total goals";
-      leftValue = CurrencyFormat.format(context, totalAssets);
+      leftValue = CurrencyFormat.formatCompact(context, totalAssets);
       rightLabel = "Total debt";
-      rightValue = CurrencyFormat.format(context, totalDebt);
+      rightValue = CurrencyFormat.formatCompact(context, totalDebt);
       bottomText = "Every payment is progress.";
     } else if (hasAssets) {
       leftLabel = "Goals value";
-      leftValue = CurrencyFormat.format(context, totalAssets);
+      leftValue = CurrencyFormat.formatCompact(context, totalAssets);
       rightLabel = "Saved this month";
       // We could add logic to sum contributions this month if needed
       rightValue = "—";
-      bottomText = "You’re growing real wealth.";
+      bottomText = "You're growing real wealth.";
     } else {
       bottomText = "Start tracking your wealth.";
     }
@@ -238,14 +238,14 @@ class ForecastScreen extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: gradientColors,
+          colors: gradientColors, // <--- USE DYNAMIC COLORS
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: gradientColors.last.withOpacity(0.35),
+            color: gradientColors.last.withOpacity(0.35), // <--- USE DYNAMIC COLORS
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -494,7 +494,7 @@ class ForecastScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      CurrencyFormat.format(context, item.currentOutstanding),
+                      CurrencyFormat.formatCompact(context, item.currentOutstanding),
                       style: TextStyle(
                         color: onBg,
                         fontWeight: FontWeight.bold,
@@ -549,7 +549,7 @@ class ForecastScreen extends StatelessWidget {
                 ),
                 if (item.monthlyEmiOrContribution > 0)
                   Text(
-                    "EMI: ${CurrencyFormat.format(context, item.monthlyEmiOrContribution)}",
+                    "EMI: ${CurrencyFormat.formatCompact(context, item.monthlyEmiOrContribution)}",
                     style: TextStyle(
                       color: onBg.withOpacity(0.5),
                       fontSize: 11,
@@ -621,7 +621,7 @@ class ForecastScreen extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         item.targetAmount > 0
-                            ? "Target: ${CurrencyFormat.format(context, item.targetAmount)}"
+                            ? "Target: ${CurrencyFormat.formatCompact(context, item.targetAmount)}"
                             : "Savings Goal",
                         style: TextStyle(
                           color: onBg.withOpacity(0.5),
@@ -635,7 +635,7 @@ class ForecastScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      CurrencyFormat.format(context, item.currentOutstanding),
+                      CurrencyFormat.formatCompact(context, item.currentOutstanding),
                       style: TextStyle(
                         color: onBg,
                         fontWeight: FontWeight.bold,
@@ -690,7 +690,7 @@ class ForecastScreen extends StatelessWidget {
                 ),
                 if (item.monthlyEmiOrContribution > 0)
                   Text(
-                    "Monthly: ${CurrencyFormat.format(context, item.monthlyEmiOrContribution)}",
+                    "Monthly: ${CurrencyFormat.formatCompact(context, item.monthlyEmiOrContribution)}",
                     style: TextStyle(
                       color: onBg.withOpacity(0.5),
                       fontSize: 11,

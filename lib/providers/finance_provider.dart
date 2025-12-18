@@ -11,6 +11,30 @@ import '../models/recurring_pattern.dart';
 import '../services/database_service.dart';
 import '../data/default_categories.dart';
 
+class SystemNotification {
+  final String id;
+  final DateTime timestamp;
+  final String title;
+  final String message;
+  final bool isRead;
+
+  SystemNotification({
+    required this.id,
+    required this.timestamp,
+    required this.title,
+    required this.message,
+    this.isRead = false,
+  });
+
+  SystemNotification copyWith({bool? isRead}) => SystemNotification(
+    id: id,
+    timestamp: timestamp,
+    title: title,
+    message: message,
+    isRead: isRead ?? this.isRead,
+  );
+}
+
 class FinanceProvider extends ChangeNotifier {
   // ─── STATE ───
   List<CategoryModel> _categories = [];
@@ -19,17 +43,77 @@ class FinanceProvider extends ChangeNotifier {
 
   bool _isLoading = true;
 
+  // Home banner message for recurring match
+  String? _lastRecurringMatchMessage;
+
+  // 🔔 NEW: In‑app system notifications (not persisted yet)
+  final List<SystemNotification> _notifications = [];
+
   // ─── GETTERS ───
   List<CategoryModel> get categories => _categories;
   List<TransactionModel> get transactions => _transactions;
   List<ForecastItem> get forecastItems => _forecastItems;
   bool get isLoading => _isLoading;
 
+  String? get lastRecurringMatchMessage => _lastRecurringMatchMessage;
+
+  List<SystemNotification> get notifications =>
+      List.unmodifiable(_notifications);
+
+  int get unreadNotificationCount =>
+      _notifications.where((n) => !n.isRead).length;
+
   // Helper to get pinned categories directly from the list
-  List<CategoryModel> get pinnedCategories => _categories.where((c) => c.isPinned).toList();
+  List<CategoryModel> get pinnedCategories =>
+      _categories.where((c) => c.isPinned).toList();
 
   // ─── DATABASE ACCESS ───
   Isar get _isar => DatabaseService().syncDb;
+
+  // Setter for banner message
+  void setRecurringMatchMessage(String? message) {
+    _lastRecurringMatchMessage = message;
+    notifyListeners();
+  }
+
+  // 🔔 NEW: Notification helpers
+  void addSystemNotification({
+    required String title,
+    required String message,
+  }) {
+    final n = SystemNotification(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      timestamp: DateTime.now(),
+      title: title,
+      message: message,
+    );
+    _notifications.insert(0, n);
+    // Keep only recent 30
+    if (_notifications.length > 30) {
+      _notifications.removeRange(30, _notifications.length);
+    }
+    notifyListeners();
+  }
+
+  void markNotificationRead(String id) {
+    final idx = _notifications.indexWhere((n) => n.id == id);
+    if (idx != -1) {
+      _notifications[idx] = _notifications[idx].copyWith(isRead: true);
+      notifyListeners();
+    }
+  }
+
+  void markAllNotificationsRead() {
+    for (var i = 0; i < _notifications.length; i++) {
+      _notifications[i] = _notifications[i].copyWith(isRead: true);
+    }
+    notifyListeners();
+  }
+
+  void clearNotifications() {
+    _notifications.clear();
+    notifyListeners();
+  }
 
   // ─── INITIALIZATION ───
   Future<void> loadData() async {
@@ -38,15 +122,17 @@ class FinanceProvider extends ChangeNotifier {
 
     try {
       // 1. Load Categories
-      _categories = await _isar.categoryModels.where().sortBySortOrder().findAll();
+      _categories =
+      await _isar.categoryModels.where().sortBySortOrder().findAll();
 
       // 2. Load Transactions (Sort by date desc)
-      _transactions = await _isar.transactionModels.where().sortByDateDesc().findAll();
+      _transactions =
+      await _isar.transactionModels.where().sortByDateDesc().findAll();
 
       // 3. Load Forecast Items
       _forecastItems = await _isar.forecastItems.where().findAll();
 
-      // 🚨 REVISED SEEDING LOGIC 🚨
+      // REVISED SEEDING LOGIC
       bool isEmptyIsar = _categories.isEmpty && _transactions.isEmpty;
 
       if (isEmptyIsar) {
@@ -54,8 +140,10 @@ class FinanceProvider extends ChangeNotifier {
         await _migrateFromSharedPreferences();
 
         // Reload to check if migration actually added anything
-        _categories = await _isar.categoryModels.where().sortBySortOrder().findAll();
-        _transactions = await _isar.transactionModels.where().sortByDateDesc().findAll();
+        _categories =
+        await _isar.categoryModels.where().sortBySortOrder().findAll();
+        _transactions =
+        await _isar.transactionModels.where().sortByDateDesc().findAll();
         _forecastItems = await _isar.forecastItems.where().findAll();
       }
 
@@ -64,9 +152,8 @@ class FinanceProvider extends ChangeNotifier {
         await _addDefaultCategories();
       }
 
-      // 🔄 CHECK RECURRING TRANSACTIONS
+      // CHECK RECURRING TRANSACTIONS
       await processRecurringTransactions();
-
     } catch (e) {
       debugPrint("Error loading Isar data: $e");
     } finally {
@@ -96,37 +183,45 @@ class FinanceProvider extends ChangeNotifier {
         // 1. Create the Transaction
         if (pattern.autoLog) {
           final newTx = TransactionModel(
-            id: DateTime.now().millisecondsSinceEpoch + createdCount, // Ensure unique ID
+            id: DateTime.now().millisecondsSinceEpoch + createdCount,
             amount: pattern.amount,
-            type: pattern.categoryBucket == CategoryBucket.income ? TransactionType.income : TransactionType.expense,
-            date: pattern.nextDueDate, // Use the scheduled date, not "now"
+            type: pattern.categoryBucket == CategoryBucket.income
+                ? TransactionType.income
+                : TransactionType.expense,
+            date: pattern.nextDueDate,
             categoryName: pattern.name,
             categoryIcon: pattern.emoji,
             categoryBucket: pattern.categoryBucket,
             categoryId: pattern.categoryId,
             note: 'Auto-recurring: ${pattern.name}',
-            recurringRuleId: pattern.id, // 🟢 LINK GENERATED TX TO RULE
+            recurringRuleId: pattern.id, // LINK GENERATED TX TO RULE
           );
 
           await _isar.transactionModels.put(newTx);
-          // Update local state if it's new enough to be in the list
           _transactions.insert(0, newTx);
-
           createdCount++;
+
+          // 🔔 log notification per auto-logged transaction
+          addSystemNotification(
+            title: 'Auto‑logged subscription',
+            message:
+            '${pattern.name} (₹${pattern.amount.toStringAsFixed(0)}/mo) was logged for today.',
+          );
         }
 
         // 2. Advance the Next Due Date
-        pattern.nextDueDate = calculateNextDate(pattern.nextDueDate, pattern.frequency);
+        pattern.nextDueDate =
+            calculateNextDate(pattern.nextDueDate, pattern.frequency);
         await _isar.recurringPatterns.put(pattern);
       }
     });
 
     if (createdCount > 0) {
-      // Re-sort to keep list clean
       _transactions.sort((a, b) => b.date.compareTo(a.date));
-      notifyListeners();
       debugPrint("🤖 Auto-logged $createdCount recurring transactions.");
     }
+
+    notifyListeners();
   }
 
   /// Helper to calculate the next occurrence date
@@ -139,7 +234,8 @@ class FinanceProvider extends ChangeNotifier {
       case RecurrenceFrequency.monthly:
       // Smart monthly add (handles Jan 31 -> Feb 28)
         var newDate = DateTime(current.year, current.month + 1, current.day);
-        if (newDate.month != (current.month + 1) % 12 && newDate.day != current.day) {
+        if (newDate.month != (current.month + 1) % 12 &&
+            newDate.day != current.day) {
           // If we jumped a month (e.g. Jan 31 -> Mar 3), backtrack to end of Feb
           return DateTime(current.year, current.month + 2, 0);
         }
@@ -154,12 +250,20 @@ class FinanceProvider extends ChangeNotifier {
     await _isar.writeTxn(() async {
       await _isar.recurringPatterns.put(pattern);
     });
+
+    // 🔔 notification for created rule
+    addSystemNotification(
+      title: 'Subscription created',
+      message:
+      '${pattern.name} (₹${pattern.amount.toStringAsFixed(0)}/mo) was added.',
+    );
+
     // Check immediately if it triggers for today
     await processRecurringTransactions();
     notifyListeners();
   }
 
-  // 🟢 NEW: Deletes a recurring rule
+  // Deletes a recurring rule
   Future<void> deleteRecurringPattern(int id) async {
     await _isar.writeTxn(() async {
       await _isar.recurringPatterns.delete(id);
@@ -286,14 +390,14 @@ class FinanceProvider extends ChangeNotifier {
   }
 
   Future<void> _syncForecastItemNames(CategoryModel cat) async {
-    final itemsToUpdate = _forecastItems.where((f) => f.categoryId == cat.id).toList();
+    final itemsToUpdate =
+    _forecastItems.where((f) => f.categoryId == cat.id).toList();
     if (itemsToUpdate.isEmpty) return;
 
     await _isar.writeTxn(() async {
       for (var item in itemsToUpdate) {
         final updated = item.copyWith(name: cat.name, icon: cat.icon);
         await _isar.forecastItems.put(updated);
-        // update local list
         final idx = _forecastItems.indexOf(item);
         if (idx != -1) _forecastItems[idx] = updated;
       }
@@ -326,11 +430,13 @@ class FinanceProvider extends ChangeNotifier {
 
       // Reverse Sync: Update Category if name changed
       if (item.categoryId != null) {
-        final catIndex = _categories.indexWhere((c) => c.id == item.categoryId);
+        final catIndex =
+        _categories.indexWhere((c) => c.id == item.categoryId);
         if (catIndex != -1) {
           final cat = _categories[catIndex];
           if (cat.name != item.name || cat.icon != item.icon) {
-            final updatedCat = cat.copyWith(name: item.name, icon: item.icon);
+            final updatedCat =
+            cat.copyWith(name: item.name, icon: item.icon);
             await updateCategory(updatedCat);
           }
         }
@@ -363,31 +469,41 @@ class FinanceProvider extends ChangeNotifier {
     await _modifyForecastBalance(tx, isRevert: true);
   }
 
-  Future<void> _modifyForecastBalance(TransactionModel tx, {required bool isRevert}) async {
+  Future<void> _modifyForecastBalance(TransactionModel tx,
+      {required bool isRevert}) async {
     // 1. Find the item
     ForecastItem? item;
     if (tx.categoryId != null) {
       try {
-        item = _forecastItems.firstWhere((f) => f.categoryId == tx.categoryId);
+        item =
+            _forecastItems.firstWhere((f) => f.categoryId == tx.categoryId);
       } catch (_) {}
     }
 
     // Auto-create if missing (and not reverting)
     if (item == null && !isRevert) {
       // Find category first
-      final cat = _categories.firstWhere((c) => c.id == tx.categoryId, orElse: () =>
-          CategoryModel(id: 0, name: tx.categoryName, icon: tx.categoryIcon, bucket: tx.categoryBucket, isDefault: false));
+      final cat = _categories.firstWhere(
+              (c) => c.id == tx.categoryId,
+          orElse: () => CategoryModel(
+              id: 0,
+              name: tx.categoryName,
+              icon: tx.categoryIcon,
+              bucket: tx.categoryBucket,
+              isDefault: false));
 
-      if (cat.id == 0) return; // Should not happen ideally
+      if (cat.id == 0) return;
 
-      final forecastType = tx.categoryBucket == CategoryBucket.goal ? ForecastType.goalTarget : ForecastType.debtSimple;
+      final forecastType = tx.categoryBucket == CategoryBucket.goal
+          ? ForecastType.goalTarget
+          : ForecastType.debtSimple;
       final newItem = ForecastItem(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         name: cat.name,
         icon: cat.icon,
         type: forecastType,
         currentOutstanding: tx.amount,
-        targetAmount: tx.amount, // Default target
+        targetAmount: tx.amount,
         interestRate: 0,
         monthlyEmiOrContribution: 0,
         billingDay: 1,
@@ -403,14 +519,18 @@ class FinanceProvider extends ChangeNotifier {
     // 2. Calculate Principal Portion
     double effectivePrincipalChange = tx.amount;
 
-    if (item.isLiability && item.type != ForecastType.debtSimple && !isRevert) {
+    if (item.isLiability &&
+        item.type != ForecastType.debtSimple &&
+        !isRevert) {
       final double monthlyRate = (item.interestRate / 100) / 12;
       final double approxInterest = item.currentOutstanding * monthlyRate;
       final double minRange = approxInterest * 0.8;
       final double maxRange = approxInterest * 1.2;
 
-      final priorPayments = _getPriorPaymentsThisMonth(item.categoryId!, tx);
-      final bool isInterestAlreadySatisfied = priorPayments >= minRange;
+      final priorPayments =
+      _getPriorPaymentsThisMonth(item.categoryId!, tx);
+      final bool isInterestAlreadySatisfied =
+          priorPayments >= minRange;
 
       if (!isInterestAlreadySatisfied) {
         if (tx.amount >= minRange && tx.amount <= maxRange) {
@@ -427,24 +547,31 @@ class FinanceProvider extends ChangeNotifier {
     ForecastItem updatedItem = item;
     if (item.isLiability) {
       if (isRevert) {
-        updatedItem = item.copyWith(currentOutstanding: item.currentOutstanding + effectivePrincipalChange);
+        updatedItem = item.copyWith(
+            currentOutstanding:
+            item.currentOutstanding + effectivePrincipalChange);
       } else {
-        final newBal = item.currentOutstanding - effectivePrincipalChange;
-        updatedItem = item.copyWith(currentOutstanding: newBal < 0 ? 0 : newBal);
+        final newBal =
+            item.currentOutstanding - effectivePrincipalChange;
+        updatedItem = item.copyWith(
+            currentOutstanding: newBal < 0 ? 0 : newBal);
       }
     } else {
       if (isRevert) {
         final newBal = item.currentOutstanding - tx.amount;
-        updatedItem = item.copyWith(currentOutstanding: newBal < 0 ? 0 : newBal);
+        updatedItem = item.copyWith(
+            currentOutstanding: newBal < 0 ? 0 : newBal);
       } else {
-        updatedItem = item.copyWith(currentOutstanding: item.currentOutstanding + tx.amount);
+        updatedItem = item.copyWith(
+            currentOutstanding: item.currentOutstanding + tx.amount);
       }
     }
 
     await updateForecastItem(updatedItem);
   }
 
-  double _getPriorPaymentsThisMonth(int categoryId, TransactionModel currentTx) {
+  double _getPriorPaymentsThisMonth(
+      int categoryId, TransactionModel currentTx) {
     final now = currentTx.date;
     return _transactions
         .where((t) =>
@@ -455,39 +582,54 @@ class FinanceProvider extends ChangeNotifier {
         .fold(0.0, (sum, t) => sum + t.amount);
   }
 
-  Future<ForecastItem> _ensureCategoryForForecastItem(ForecastItem item) async {
-    final bucket = item.isLiability ? CategoryBucket.liability : CategoryBucket.goal;
+  Future<ForecastItem> _ensureCategoryForForecastItem(
+      ForecastItem item) async {
+    final bucket =
+    item.isLiability ? CategoryBucket.liability : CategoryBucket.goal;
 
     // Check if a category with this name already exists
-    final existingCatIndex = _categories.indexWhere((c) => c.name == item.name && c.bucket == bucket);
+    final existingCatIndex = _categories.indexWhere(
+            (c) => c.name == item.name && c.bucket == bucket);
 
     if (existingCatIndex != -1) {
       return item.copyWith(categoryId: _categories[existingCatIndex].id);
     }
 
     // Create new
-    final newId = (_categories.isEmpty ? 1000 : _categories.map((c) => c.id).reduce(max)) + 1;
+    final newId = (_categories.isEmpty
+        ? 1000
+        : _categories.map((c) => c.id).reduce(max)) +
+        1;
     final newCat = CategoryModel(
         id: newId,
         name: item.name,
         icon: item.icon,
         bucket: bucket,
-        isDefault: false
-    );
+        isDefault: false);
 
     await addCategory(newCat);
     return item.copyWith(categoryId: newId);
   }
 
   Color _pickNextForecastColor() {
-    const colors = [Color(0xFF3B82F6), Color(0xFF10B981), Color(0xFFF59E0B), Color(0xFFEF4444), Color(0xFF8B5CF6)];
+    const colors = [
+      Color(0xFF3B82F6),
+      Color(0xFF10B981),
+      Color(0xFFF59E0B),
+      Color(0xFFEF4444),
+      Color(0xFF8B5CF6)
+    ];
     if (_forecastItems.isEmpty) return colors.first;
     return colors[_forecastItems.length % colors.length];
   }
 
   // ─── DASHBOARD HELPERS ───
-  double get totalIncome => _transactions.where((t) => t.type == TransactionType.income).fold(0.0, (sum, t) => sum + t.amount);
-  double get totalExpenses => _transactions.where((t) => t.type == TransactionType.expense).fold(0.0, (sum, t) => sum + t.amount);
+  double get totalIncome => _transactions
+      .where((t) => t.type == TransactionType.income)
+      .fold(0.0, (sum, t) => sum + t.amount);
+  double get totalExpenses => _transactions
+      .where((t) => t.type == TransactionType.expense)
+      .fold(0.0, (sum, t) => sum + t.amount);
   double get totalBalance => totalIncome - totalExpenses;
 
   // ─── SAFE TO SPEND ───
@@ -495,22 +637,31 @@ class FinanceProvider extends ChangeNotifier {
     final now = DateTime.now();
     // 1. Calculate Income (Salary, Bonus)
     final income = _transactions
-        .where((t) => t.date.month == now.month && t.date.year == now.year && t.type == TransactionType.income)
+        .where((t) =>
+    t.date.month == now.month &&
+        t.date.year == now.year &&
+        t.type == TransactionType.income)
         .fold(0.0, (sum, t) => sum + t.amount);
 
     // 2. Calculate "Already Spent" (Any expense transaction made this month)
     final spent = _transactions
-        .where((t) => t.date.month == now.month && t.date.year == now.year && t.type == TransactionType.expense)
+        .where((t) =>
+    t.date.month == now.month &&
+        t.date.year == now.year &&
+        t.type == TransactionType.expense)
         .fold(0.0, (sum, t) => sum + t.amount);
 
     // 3. Subtract Mandates (Fixed bills that MUST be paid, e.g. Rent, Utilities)
     double pendingMandates = 0.0;
-    for (var cat in _categories.where((c) => c.isMandate && (c.monthlyMandate ?? 0) > 0)) {
+    for (var cat in _categories
+        .where((c) => c.isMandate && (c.monthlyMandate ?? 0) > 0)) {
       final spentOnThisCat = _transactions
-          .where((t) => t.categoryId == cat.id && t.date.month == now.month && t.date.year == now.year)
+          .where((t) =>
+      t.categoryId == cat.id &&
+          t.date.month == now.month &&
+          t.date.year == now.year)
           .fold(0.0, (sum, t) => sum + t.amount);
 
-      // If we haven't spent the full mandate yet, reserve the difference
       if (spentOnThisCat < cat.monthlyMandate!) {
         pendingMandates += (cat.monthlyMandate! - spentOnThisCat);
       }
@@ -536,15 +687,19 @@ class FinanceProvider extends ChangeNotifier {
     List<CategoryModel> legacyCats = [];
     if (catString != null) {
       final List decoded = json.decode(catString);
-      legacyCats = decoded.map((e) => CategoryModel.fromJson(e)).toList();
+      legacyCats =
+          decoded.map((e) => CategoryModel.fromJson(e)).toList();
     }
 
     // 1b. Pinned IDs (Merge into CategoryModel)
     final pinnedList = prefs.getStringList('pinned_categories');
     if (pinnedList != null && legacyCats.isNotEmpty) {
-      final pinnedIds = pinnedList.map((e) => int.parse(e)).toSet();
+      final pinnedIds =
+      pinnedList.map((e) => int.parse(e)).toSet();
       legacyCats = legacyCats.map((c) {
-        if (pinnedIds.contains(c.id)) return c.copyWith(isPinned: true);
+        if (pinnedIds.contains(c.id)) {
+          return c.copyWith(isPinned: true);
+        }
         return c;
       }).toList();
     }
@@ -554,7 +709,8 @@ class FinanceProvider extends ChangeNotifier {
     List<TransactionModel> legacyTx = [];
     if (txString != null) {
       final List decoded = json.decode(txString);
-      legacyTx = decoded.map((e) => TransactionModel.fromJson(e)).toList();
+      legacyTx =
+          decoded.map((e) => TransactionModel.fromJson(e)).toList();
     }
 
     // 3. Forecast
@@ -562,7 +718,8 @@ class FinanceProvider extends ChangeNotifier {
     List<ForecastItem> legacyFc = [];
     if (fcString != null) {
       final List decoded = json.decode(fcString);
-      legacyFc = decoded.map((e) => ForecastItem.fromJson(e)).toList();
+      legacyFc =
+          decoded.map((e) => ForecastItem.fromJson(e)).toList();
     }
 
     if (legacyCats.isEmpty && legacyTx.isEmpty) return;

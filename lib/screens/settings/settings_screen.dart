@@ -15,8 +15,10 @@ import '../settings/preferences_screen.dart';
 import '../settings/backup_screen.dart';
 import '../settings/support_screen.dart';
 import '../settings/appearance_screen.dart';
-import '../settings/recurring_transactions_screen.dart'; // <--- ADD IMPORT
+import '../settings/recurring_transactions_screen.dart';
 import '../security/security_screen.dart';
+import '../settings/tools_screen.dart';
+
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -65,184 +67,202 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final subTextColor = onBg.withOpacity(0.6);
     final borderColor = theme.dividerColor.withOpacity(0.1);
 
-    return SafeArea(
-      child: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 24),
-                  const Text(
-                    'clear finance',
-                    style: TextStyle(
-                      color: Color(0xFF3B82F6),
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: -0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // ─── HERO CARD ───
-                  _buildSettingsCard(
-                    profile,
-                    isAppLockEnabled,
-                    currentThemeName,
-                    categoryCount,
-                    settingsGradient,
-                  ),
-
-                  const SizedBox(height: 28),
-
-                  _buildSectionHeader("Account & Preferences", subTextColor),
-                  _buildSettingsGroup(cardColor, borderColor, isDark, [
-                    // 🔁 RECURRING TRANSACTIONS TILE ADDED HERE
-                    _buildTile(
-                      icon: Icons.autorenew_rounded,
-                      title: "Subscriptions & Recurring",
-                      subtitle: "Manage auto-logged expenses",
-                      color: Colors.blueAccent,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      onTap: () => _navTo(const RecurringTransactionsScreen()),
-                    ),
-                    _buildTile(
-                      icon: Icons.palette_rounded,
-                      title: "Appearance",
-                      subtitle: currentThemeName,
-                      color: Colors.purpleAccent,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      onTap: () => _navTo(const AppearanceScreen()),
-                    ),
-                    _buildTile(
-                      icon: Icons.currency_rupee_rounded,
-                      title: "Currency",
-                      subtitle: currencySubtitle,
-                      color: Colors.greenAccent,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      onTap: () =>
-                          _navTo(const PreferencesScreen(tab: 'currency')),
-                    ),
-                    _buildTile(
-                      icon: Icons.fingerprint_rounded,
-                      title: "App Lock",
-                      subtitle: isAppLockEnabled ? "Enabled" : "Disabled",
-                      color: Colors.cyanAccent,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      onTap: _navToSecurity,
-                    ),
-                    _buildTile(
-                      icon: Icons.category_rounded,
-                      title: "Categories",
-                      subtitle: "$categoryCount active",
-                      color: Colors.orangeAccent,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      onTap: () =>
-                          _navTo(const CategoriesScreen(initialIndex: 0)),
-                    ),
-                    _buildTile(
-                      icon: Icons.notifications_active_rounded,
-                      title: "Notifications",
-                      color: Colors.pinkAccent,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      onTap: () =>
-                          _navTo(const PreferencesScreen(tab: 'notifications')),
-                    ),
-                    _buildTile(
-                      icon: Icons.language_rounded,
-                      title: "Language",
-                      subtitle: "English",
-                      color: Colors.tealAccent,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      onTap: () =>
-                          _navTo(const PreferencesScreen(tab: 'language')),
-                    ),
-                  ]),
-
-                  const SizedBox(height: 24),
-                  // ... (Rest of the file remains identical)
-                  _buildSectionHeader("Data Management", subTextColor),
-                  _buildSettingsGroup(cardColor, borderColor, isDark, [
-                    _buildTile(
-                      icon: Icons.cloud_sync_rounded,
-                      title: "Backups & Sync",
-                      subtitle: "Cloud, CSV, and Restore",
-                      color: Colors.blueAccent,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      onTap: () => _navTo(const BackupScreen()),
-                    ),
-                    _buildTile(
-                      icon: Icons.delete_forever_rounded,
-                      title: "Reset App Data",
-                      subtitle: "Clear all data & start fresh",
-                      color: Colors.redAccent,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      isDestructive: true,
-                      onTap: () => _showResetDialog(context),
-                    ),
-                  ]),
-
-                  const SizedBox(height: 24),
-                  _buildSectionHeader("Help & Info", subTextColor),
-                  _buildSettingsGroup(cardColor, borderColor, isDark, [
-                    _buildTile(
-                      icon: Icons.help_outline_rounded,
-                      title: "Help & Support",
-                      color: Colors.blueGrey,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      onTap: () => _navTo(const SupportScreen(tab: 'help')),
-                    ),
-                    _buildTile(
-                      icon: Icons.privacy_tip_outlined,
-                      title: "Privacy Policy",
-                      color: Colors.blueGrey,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      onTap: () => _navTo(const SupportScreen(tab: 'privacy')),
-                    ),
-                    _buildTile(
-                      icon: Icons.info_outline_rounded,
-                      title: "About",
-                      color: Colors.blueGrey,
-                      onBg: onBg,
-                      subTextColor: subTextColor,
-                      onTap: () => _navTo(const SupportScreen(tab: 'about')),
-                    ),
-                  ]),
-                  const SizedBox(height: 40),
-                  Center(
-                    child: Text(
-                      "v1.0.0 • Clear Finance",
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 24),
+                    const Text(
+                      'clear finance',
                       style: TextStyle(
-                        color: subTextColor.withOpacity(0.5),
-                        fontSize: 12,
+                        color: Color(0xFF3B82F6),
+                        fontSize: 26,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: -0.5,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 80),
-                ],
+                    const SizedBox(height: 24),
+
+                    // ─── HERO CARD ───
+                    _buildSettingsCard(
+                      profile,
+                      isAppLockEnabled,
+                      currentThemeName,
+                      categoryCount,
+                      settingsGradient,
+                    ),
+
+                    const SizedBox(height: 28),
+
+                    _buildSectionHeader(
+                      "Account & Preferences",
+                      subTextColor,
+                    ),
+                    _buildSettingsGroup(cardColor, borderColor, isDark, [
+                      _buildTile(
+                        icon: Icons.autorenew_rounded,
+                        title: "Subscriptions & Recurring",
+                        subtitle: "Manage auto-logged expenses",
+                        color: Colors.blueAccent,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: () =>
+                            _navTo(const RecurringTransactionsScreen()),
+                      ),
+                      _buildTile(
+                        icon: Icons.palette_rounded,
+                        title: "Appearance",
+                        subtitle: currentThemeName,
+                        color: Colors.purpleAccent,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: () => _navTo(const AppearanceScreen()),
+                      ),
+                      _buildTile(
+                        icon: Icons.calculate_rounded,
+                        title: "Tools",
+                        subtitle: "EMI & other planners",
+                        color: Colors.indigoAccent,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: () => _navTo(const ToolsScreen()),
+                      ),
+                      _buildTile(
+                        icon: Icons.currency_rupee_rounded,
+                        title: "Currency",
+                        subtitle: currencySubtitle,
+                        color: Colors.greenAccent,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: () =>
+                            _navTo(const PreferencesScreen(tab: 'currency')),
+                      ),
+                      _buildTile(
+                        icon: Icons.fingerprint_rounded,
+                        title: "App Lock",
+                        subtitle:
+                        isAppLockEnabled ? "Enabled" : "Disabled",
+                        color: Colors.cyanAccent,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: _navToSecurity,
+                      ),
+                      _buildTile(
+                        icon: Icons.category_rounded,
+                        title: "Categories",
+                        subtitle: "$categoryCount active",
+                        color: Colors.orangeAccent,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: () =>
+                            _navTo(const CategoriesScreen(initialIndex: 0)),
+                      ),
+                      _buildTile(
+                        icon: Icons.notifications_active_rounded,
+                        title: "Notifications",
+                        color: Colors.pinkAccent,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: () => _navTo(
+                          const PreferencesScreen(tab: 'notifications'),
+                        ),
+                      ),
+                      _buildTile(
+                        icon: Icons.language_rounded,
+                        title: "Language",
+                        subtitle: "English",
+                        color: Colors.tealAccent,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: () =>
+                            _navTo(const PreferencesScreen(tab: 'language')),
+                      ),
+                    ]),
+
+                    const SizedBox(height: 24),
+                    _buildSectionHeader("Data Management", subTextColor),
+                    _buildSettingsGroup(cardColor, borderColor, isDark, [
+                      _buildTile(
+                        icon: Icons.cloud_sync_rounded,
+                        title: "Backups & Sync",
+                        subtitle: "Cloud, CSV, and Restore",
+                        color: Colors.blueAccent,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: () => _navTo(const BackupScreen()),
+                      ),
+                      _buildTile(
+                        icon: Icons.delete_forever_rounded,
+                        title: "Reset App Data",
+                        subtitle: "Clear all data & start fresh",
+                        color: Colors.redAccent,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        isDestructive: true,
+                        onTap: () => _showResetDialog(context),
+                      ),
+                    ]),
+
+                    const SizedBox(height: 24),
+                    _buildSectionHeader("Help & Info", subTextColor),
+                    _buildSettingsGroup(cardColor, borderColor, isDark, [
+                      _buildTile(
+                        icon: Icons.help_outline_rounded,
+                        title: "Help & Support",
+                        color: Colors.blueGrey,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: () =>
+                            _navTo(const SupportScreen(tab: 'help')),
+                      ),
+                      _buildTile(
+                        icon: Icons.privacy_tip_outlined,
+                        title: "Privacy Policy",
+                        color: Colors.blueGrey,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: () =>
+                            _navTo(const SupportScreen(tab: 'privacy')),
+                      ),
+                      _buildTile(
+                        icon: Icons.info_outline_rounded,
+                        title: "About",
+                        color: Colors.blueGrey,
+                        onBg: onBg,
+                        subTextColor: subTextColor,
+                        onTap: () =>
+                            _navTo(const SupportScreen(tab: 'about')),
+                      ),
+                    ]),
+                    const SizedBox(height: 40),
+                    Center(
+                      child: Text(
+                        "v1.0.0 • Clear Finance",
+                        style: TextStyle(
+                          color: subTextColor.withOpacity(0.5),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 80),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  // ... (Keep existing helpers: _buildSettingsCard, _buildMiniStatusRow, _navTo, etc.)
   Widget _buildSettingsCard(
       UserProfile profile,
       bool isAppLockOn,
@@ -250,10 +270,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       int catCount,
       List<Color> gradientColors,
       ) {
-    // (Your existing code here)
     const textColor = Colors.black;
     final subTextColor = Colors.black.withOpacity(0.7);
     final boxColor = Colors.white.withOpacity(0.2);
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -284,11 +304,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: boxColor,
                   shape: BoxShape.circle,
                   border: Border.all(
-                      color: Colors.black.withOpacity(0.1), width: 1),
+                    color: Colors.black.withOpacity(0.1),
+                    width: 1,
+                  ),
                 ),
                 child: const Icon(
                   Icons.person_rounded,
-                  color: Colors.black, // Black Icon
+                  color: Colors.black,
                   size: 28,
                 ),
               ),
@@ -301,7 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Text(
                       profile.name.isEmpty ? "No Name" : profile.name,
                       style: const TextStyle(
-                        color: textColor, // Black
+                        color: textColor,
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
@@ -311,7 +333,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Text(
                         profile.email,
                         style: TextStyle(
-                          color: subTextColor, // Dark Gray
+                          color: subTextColor,
                           fontSize: 13,
                         ),
                       ),
@@ -320,13 +342,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               IconButton(
-                onPressed: () => _navTo(EditProfileScreen(
-                  initialName: profile.name,
-                  initialEmail: profile.email,
-                  initialPhone: profile.phone,
-                )),
+                onPressed: () => _navTo(
+                  EditProfileScreen(
+                    initialName: profile.name,
+                    initialEmail: profile.email,
+                    initialPhone: profile.phone,
+                  ),
+                ),
                 icon: const Icon(Icons.edit_rounded),
-                color: Colors.black, // Black Icon
+                color: Colors.black,
                 splashRadius: 20,
                 tooltip: 'Edit profile',
                 padding: EdgeInsets.zero,
@@ -334,17 +358,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
-
           const SizedBox(height: 24),
           Row(
             children: [
-              // BOX 1: STORAGE
               Expanded(
                 child: StreamBuilder<User?>(
                   stream: AuthService().authStateChanges,
                   builder: (context, snapshot) {
-                    final isCloud = snapshot.hasData && snapshot.data != null;
-                    final statusText = isCloud ? "Cloud Sync" : "Local only";
+                    final isCloud =
+                        snapshot.hasData && snapshot.data != null;
+                    final statusText =
+                    isCloud ? "Cloud Sync" : "Local only";
                     final statusIcon = isCloud
                         ? Icons.cloud_done_rounded
                         : Icons.smartphone_rounded;
@@ -354,7 +378,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: Container(
                         height: 88,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
                         decoration: BoxDecoration(
                           color: boxColor,
                           borderRadius: BorderRadius.circular(16),
@@ -387,7 +413,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             const Spacer(),
                             Row(
                               children: [
-                                Icon(statusIcon, size: 18, color: textColor),
+                                Icon(
+                                  statusIcon,
+                                  size: 18,
+                                  color: textColor,
+                                ),
                                 const SizedBox(width: 6),
                                 Expanded(
                                   child: Text(
@@ -395,7 +425,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
-                                      color: textColor, // Black
+                                      color: textColor,
                                       fontSize: 13,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -410,15 +440,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
               ),
-
               const SizedBox(width: 12),
-
-              // BOX 2: APP STATS
               Expanded(
                 child: Container(
                   height: 88,
-                  padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
                     color: boxColor,
                     borderRadius: BorderRadius.circular(16),
@@ -458,7 +487,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildMiniStatusRow(IconData icon, String text, Color color) {
+  Widget _buildMiniStatusRow(
+      IconData icon,
+      String text,
+      Color color,
+      ) {
     return Row(
       children: [
         Icon(
@@ -484,7 +517,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _navTo(Widget page) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => page));
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => page),
+    );
   }
 
   void _showResetDialog(BuildContext context) {
@@ -512,7 +548,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () {
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("App reset successful")),
+                const SnackBar(
+                  content: Text("App reset successful"),
+                ),
               );
             },
             child: const Text(
@@ -593,7 +631,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     return ListTile(
       onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 6,
+      ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
       ),

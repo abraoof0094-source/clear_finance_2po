@@ -47,9 +47,12 @@ class ForecastItem {
     this.billingDay = 1,
     required this.colorValue,
     this.categoryId,
+    this.isEndOfMonth = false, // default for existing data
   });
 
   bool get isLiability => type.index <= 2;
+  /// If true, treat billingDay == 31 as "end of month" (28/29/30/31).
+  bool isEndOfMonth;
 
   // Ignore: Isar doesn't store getters/functions, which is fine.
   @ignore
@@ -68,6 +71,7 @@ class ForecastItem {
     int? billingDay,
     int? colorValue,
     int? categoryId,
+    bool? isEndOfMonth,
   }) {
     return ForecastItem(
       isarId: isarId ?? this.isarId,
@@ -83,6 +87,7 @@ class ForecastItem {
       billingDay: billingDay ?? this.billingDay,
       colorValue: colorValue ?? this.colorValue,
       categoryId: categoryId ?? this.categoryId,
+      isEndOfMonth: isEndOfMonth ?? this.isEndOfMonth,
     );
   }
 
@@ -101,6 +106,7 @@ class ForecastItem {
       'billingDay': billingDay,
       'colorValue': colorValue,
       'categoryId': categoryId,
+      'isEndOfMonth': isEndOfMonth,
     };
   }
 
@@ -118,6 +124,7 @@ class ForecastItem {
       billingDay: (json['billingDay'] as num?)?.toInt() ?? 1,
       colorValue: json['colorValue'] as int,
       categoryId: json['categoryId'] as int?,
+      isEndOfMonth: json['isEndOfMonth'] as bool? ?? false,
     );
   }
 }

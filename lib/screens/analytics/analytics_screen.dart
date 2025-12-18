@@ -227,7 +227,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                 ),
                               ),
                               Text(
-                                CurrencyFormat.format(
+                                CurrencyFormat.formatCompact(
                                   context,
                                   _touchedIndex == -1
                                       ? totalExpense
@@ -357,7 +357,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                                 ),
                                               ),
                                               Text(
-                                                CurrencyFormat.format(
+                                                CurrencyFormat.formatCompact(
                                                     context, category.amount),
                                                 style: TextStyle(
                                                   color: onBg.withOpacity(0.7),
@@ -420,7 +420,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                         ),
                                       ),
                                       trailing: Text(
-                                        CurrencyFormat.format(
+                                        CurrencyFormat.formatCompact(
                                             context, tx.amount),
                                         style: TextStyle(
                                           color: onBg,
@@ -580,7 +580,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: gradientColors.last.withOpacity(0.3), // <--- USE DYNAMIC COLORS
+              color: gradientColors.last
+                  .withOpacity(0.3), // <--- USE DYNAMIC COLORS
               blurRadius: 20,
               offset: const Offset(0, 10),
             ),
@@ -601,7 +602,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   ),
                 ),
                 Text(
-                  CurrencyFormat.format(context, income),
+                  CurrencyFormat.formatCompact(context, income),
                   style: TextStyle(
                     color: primaryText,
                     fontSize: 20,
@@ -654,7 +655,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   ],
                 ),
                 Text(
-                  CurrencyFormat.format(context, savings),
+                  CurrencyFormat.formatCompact(context, savings),
                   style: TextStyle(
                     color: primaryText,
                     fontWeight: FontWeight.w800,
@@ -696,7 +697,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            CurrencyFormat.format(context, amount),
+            CurrencyFormat.formatCompact(context, amount),
             style: TextStyle(
               color: primaryText,
               fontWeight: FontWeight.bold,

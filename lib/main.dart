@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 
 import 'providers/finance_provider.dart';
 import 'providers/theme_provider.dart';
@@ -21,6 +22,11 @@ void main() async {
   // 🚀 Initialize Isar Database
   final dbService = DatabaseService();
   await dbService.db; // Wait for open() to finish before launching app
+  // Lock to portrait orientation
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
 
   runApp(
     MultiProvider(

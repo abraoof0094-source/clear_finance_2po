@@ -1,37 +1,74 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/preferences_provider.dart';
 
 class CurrencyFormat {
-
-  /// Formats a double (e.g., 1250.50) into a localized currency string.
-  /// Example outputs: "₹ 1,250.50", "$ 1,250", "€ 500"
-  ///
-  /// Uses [context.watch] so any widget using this will auto-rebuild
-  /// if the user changes currency settings.
+  /// Full currency format, e.g. "₹ 1,25,000" or "₹ 1,25,000.00"
+  /// - Respects user currency symbol
+  /// - Respects "force decimals" toggle in PreferencesProvider
   static String format(BuildContext context, double amount) {
-    // 1. Get the symbol from your provider
     final prefs = context.watch<PreferencesProvider>();
     final String symbol = prefs.currencySymbol;
 
-    // 2. Determine decimal places:
-    // If the number is whole (e.g. 100.0), show 0 decimals.
-    // If it has cents (e.g. 100.50), show 2 decimals.
-    final int decimalDigits = (amount % 1 == 0) ? 0 : 2;
+    // If user wants strict accounting style, always show 2 decimals.
+    // Otherwise, show 0 for whole numbers and 2 for fractional values.
+    final int decimalDigits = prefs.forceDecimals
+        ? 2
+        : (amount % 1 == 0 ? 0 : 2);
 
-    // 3. Create the formatter
     final formatter = NumberFormat.currency(
-      locale: 'en_US',       // We keep English format (1,000.00) for consistency
-      symbol: '$symbol ',    // Add a space for better readability (e.g. "₹ ")
+      locale: 'en_US',      // keep standard grouping 1,000.00
+      symbol: '$symbol ',   // symbol plus space, e.g. "₹ "
       decimalDigits: decimalDigits,
     );
 
     return formatter.format(amount);
   }
 
-  /// Returns just the currency symbol (e.g., "₹", "$", "€").
-  /// Useful for prefix text in InputFields.
+  /// Compact Indian-style format for large numbers:
+  /// 15K, 3.2L, 1.5Cr, with currency symbol (₹15L, ₹3.2Cr)
+  ///
+  /// NOTE: This intentionally ignores `forceDecimals` because
+  /// compact values usually look better with at most 1 decimal.
+  static String formatCompact(BuildContext context, double amount) {
+    final prefs = context.watch<PreferencesProvider>();
+    final String symbol = prefs.currencySymbol;
+
+    final double v = amount.abs();
+    String suffix;
+    double divisor;
+
+    if (v >= 10000000) {
+      // Crore
+      suffix = 'Cr';
+      divisor = 10000000;
+    } else if (v >= 100000) {
+      // Lakh
+      suffix = 'L';
+      divisor = 100000;
+    } else if (v >= 1000) {
+      // Thousand
+      suffix = 'K';
+      divisor = 1000;
+    } else {
+      // For small numbers, just use the normal formatter
+      return format(context, amount);
+    }
+
+    final double compact = v / divisor;
+    final bool hasDecimal = (compact % 1) != 0;
+    final String numberStr = hasDecimal
+        ? compact.toStringAsFixed(1)   // e.g. 1.5L
+        : compact.toStringAsFixed(0);  // e.g. 15L
+
+    final String sign = amount < 0 ? '-' : '';
+
+    return '$sign$symbol$numberStr$suffix';
+  }
+
+  /// Returns only the currency symbol, e.g. "₹", "$", "€".
   static String symbol(BuildContext context) {
     final prefs = context.watch<PreferencesProvider>();
     return prefs.currencySymbol;

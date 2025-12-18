@@ -175,7 +175,7 @@ class _GoalDetailScreenState extends State<GoalDetailScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      CurrencyFormat.format(context, item.currentOutstanding),
+                      CurrencyFormat.formatCompact(context, item.currentOutstanding),
                       style: TextStyle(
                         color: heroPrimaryText,
                         fontSize: 32,
@@ -230,7 +230,7 @@ class _GoalDetailScreenState extends State<GoalDetailScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          "+ ${CurrencyFormat.format(context, _simulatedMonthlyContribution)}",
+                          "+ ${CurrencyFormat.formatCompact(context, _simulatedMonthlyContribution)}",
                           style: const TextStyle(
                             color: Color(0xFF10B981),
                             fontSize: 24,
@@ -374,7 +374,7 @@ class _GoalDetailScreenState extends State<GoalDetailScreen> {
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            "+${CurrencyFormat.format(context, tx.amount)}",
+                                            "+${CurrencyFormat.formatCompact(context, tx.amount)}",
                                             style: const TextStyle(
                                               color: Color(0xFF10B981),
                                               fontSize: 16,

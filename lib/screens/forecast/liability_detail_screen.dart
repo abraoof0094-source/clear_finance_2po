@@ -244,7 +244,7 @@ class _LiabilityDetailScreenState extends State<LiabilityDetailScreen> {
                     const Text("Outstanding Principal", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
                     const SizedBox(height: 4),
                     Text(
-                      CurrencyFormat.format(context, item.currentOutstanding),
+                      CurrencyFormat.formatCompact(context, item.currentOutstanding),
                       style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -1, shadows: [Shadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))]),
                     ),
                     const SizedBox(height: 16),
@@ -259,7 +259,7 @@ class _LiabilityDetailScreenState extends State<LiabilityDetailScreen> {
                             const Icon(Icons.flag_rounded, color: Color(0xFFFCD34D), size: 14),
                             const SizedBox(width: 6),
                             Text(
-                              "Approx. Monthly Interest: ${CurrencyFormat.format(context, approxInterest)}",
+                              "Approx. Monthly Interest: ${CurrencyFormat.formatCompact(context, approxInterest)}",
                               style: const TextStyle(color: Color(0xFFFCD34D), fontWeight: FontWeight.w600, fontSize: 11),
                             ),
                           ],
@@ -287,7 +287,7 @@ class _LiabilityDetailScreenState extends State<LiabilityDetailScreen> {
                             child: _buildGlassStatBox(
                               context,
                               "Interest Paid",
-                              CurrencyFormat.format(context, interestPaidReal),
+                              CurrencyFormat.formatCompact(context, interestPaidReal),
                               const Color(0xFFFCD34D),
                             ),
                           ),
@@ -296,7 +296,7 @@ class _LiabilityDetailScreenState extends State<LiabilityDetailScreen> {
                             child: _buildGlassStatBox(
                               context,
                               "Principal Paid",
-                              CurrencyFormat.format(context, principalPaidReal),
+                              CurrencyFormat.formatCompact(context, principalPaidReal),
                               const Color(0xFF34D399),
                             ),
                           ),
@@ -345,7 +345,7 @@ class _LiabilityDetailScreenState extends State<LiabilityDetailScreen> {
                       textBaseline: TextBaseline.alphabetic,
                       children: [
                         Text(
-                            CurrencyFormat.format(context, _plannerMonthlyPayment),
+                            CurrencyFormat.formatCompact(context, _plannerMonthlyPayment),
                             style: TextStyle(color: theme.colorScheme.primary, fontSize: 24, fontWeight: FontWeight.w800)
                         ),
                         const Text("per month", style: TextStyle(color: Colors.grey, fontSize: 12)),
@@ -420,7 +420,7 @@ class _LiabilityDetailScreenState extends State<LiabilityDetailScreen> {
                   child: const Icon(Icons.receipt_long, color: Colors.grey, size: 16),
                 ),
                 title: Text(DateFormat('dd MMM yyyy').format(tx.date), style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-                trailing: Text("-${CurrencyFormat.format(context, tx.amount)}", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
+                trailing: Text("-${CurrencyFormat.formatCompact(context, tx.amount)}", style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
               )).toList(),
             ),
           ],

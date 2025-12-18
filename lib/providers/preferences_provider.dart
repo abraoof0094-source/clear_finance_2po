@@ -12,7 +12,8 @@ class PreferencesProvider extends ChangeNotifier {
   static const String _reminderHourKey = 'reminder_hour';
   static const String _reminderMinuteKey = 'reminder_minute';
   static const String _customRemindersKey = 'custom_reminders';
-  static const String _bucketOrderKey = 'bucket_order'; // <--- NEW KEY 🔢
+  static const String _bucketOrderKey = 'bucket_order'; // Tab order
+  static const String _forceDecimalsKey = 'force_decimals'; // NEW
 
   // Default values
   String _currencyCode = 'INR';
@@ -23,12 +24,18 @@ class PreferencesProvider extends ChangeNotifier {
   int _reminderHour = 20; // 8 PM
   int _reminderMinute = 0;
 
+  bool _forceDecimals = false; // NEW
+
   // Custom reminders list
   List<Map<String, dynamic>> _customReminders = [];
 
   // Tab Order (Stored as Strings, exposed as Enums)
   List<String> _bucketOrderStrings = [
-    'income', 'expense', 'invest', 'liability', 'goal'
+    'income',
+    'expense',
+    'invest',
+    'liability',
+    'goal'
   ];
 
   // Getters
@@ -37,8 +44,12 @@ class PreferencesProvider extends ChangeNotifier {
   String get languageCode => _languageCode;
   bool get isDailyReminderEnabled => _isDailyReminderEnabled;
   bool get isAppLockEnabled => _isAppLockEnabled;
-  TimeOfDay get reminderTime => TimeOfDay(hour: _reminderHour, minute: _reminderMinute);
-  List<Map<String, dynamic>> get customReminders => List.unmodifiable(_customReminders);
+  TimeOfDay get reminderTime =>
+      TimeOfDay(hour: _reminderHour, minute: _reminderMinute);
+  List<Map<String, dynamic>> get customReminders =>
+      List.unmodifiable(_customReminders);
+
+  bool get forceDecimals => _forceDecimals; // NEW
 
   /// Returns the buckets in the user's preferred order
   List<CategoryBucket> get bucketOrder {
@@ -64,13 +75,19 @@ class PreferencesProvider extends ChangeNotifier {
     _reminderHour = prefs.getInt(_reminderHourKey) ?? 20;
     _reminderMinute = prefs.getInt(_reminderMinuteKey) ?? 0;
 
+    // NEW: force-decimal flag
+    _forceDecimals = prefs.getBool(_forceDecimalsKey) ?? false;
+
     // Load Custom Reminders
     final rawList = prefs.getStringList(_customRemindersKey) ?? [];
     _customReminders = rawList.map((entry) {
       final parts = entry.split('|');
       final timeParts = parts[0].split(':');
       return {
-        'time': TimeOfDay(hour: int.parse(timeParts[0]), minute: int.parse(timeParts[1])),
+        'time': TimeOfDay(
+          hour: int.parse(timeParts[0]),
+          minute: int.parse(timeParts[1]),
+        ),
         'note': parts.length > 1 ? parts[1] : '',
       };
     }).toList();
@@ -83,7 +100,9 @@ class PreferencesProvider extends ChangeNotifier {
         try {
           categoryBucketFromString(s);
           return true;
-        } catch (_) { return false; }
+        } catch (_) {
+          return false;
+        }
       }).toList();
 
       // If valid, use it. Otherwise keep default.
@@ -97,7 +116,8 @@ class PreferencesProvider extends ChangeNotifier {
 
   // ───────── TAB ORDER LOGIC ─────────
   Future<void> setBucketOrder(List<CategoryBucket> newOrder) async {
-    _bucketOrderStrings = newOrder.map((b) => categoryBucketToString(b)).toList();
+    _bucketOrderStrings =
+        newOrder.map((b) => categoryBucketToString(b)).toList();
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_bucketOrderKey, _bucketOrderStrings);
@@ -178,6 +198,15 @@ class PreferencesProvider extends ChangeNotifier {
     _isAppLockEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_appLockKey, value);
+    notifyListeners();
+  }
+
+  // ───────── CURRENCY FORMAT PREFS ─────────
+  Future<void> setForceDecimals(bool value) async {
+    if (_forceDecimals == value) return;
+    _forceDecimals = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_forceDecimalsKey, value);
     notifyListeners();
   }
 }

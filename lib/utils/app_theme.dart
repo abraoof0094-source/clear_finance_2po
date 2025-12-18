@@ -12,7 +12,7 @@ class AppColors {
   static const Color lightCard = Color(0xFFFFFFFF);
   static const Color lightBorder = Color(0xFFE2E8F0);
 
-  // Shared Colors
+  // Shared Colors (brand + neutrals)
   static const Color primary = Color(0xFF3B82F6);
   static const Color primaryDark = Color(0xFF2563EB);
   static const Color white = Colors.white;
@@ -22,6 +22,11 @@ class AppColors {
   static const Color success = Color(0xFF10B981);
   static const Color error = Color(0xFFEF4444);
   static const Color warning = Color(0xFFF59E0B);
+
+  // Semantic finance tokens
+  static const Color income = Color(0xFF16A34A);      // income / positive cashflow
+  static const Color expense = Color(0xFFEF4444);     // expenses / negatives
+  static const Color investment = Color(0xFF0EA5E9);  // investments / growth
 }
 
 class AppBorderRadius {
@@ -115,6 +120,7 @@ class AppTheme {
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.grey,
         type: BottomNavigationBarType.fixed,
+        elevation: 0,
       ),
     );
   }
@@ -202,7 +208,7 @@ class AppTheme {
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.grey,
         type: BottomNavigationBarType.fixed,
-        elevation: 8,
+        elevation: 0,
       ),
     );
   }

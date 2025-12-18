@@ -747,7 +747,7 @@ class CategoryListTile extends StatelessWidget {
                         Icon(Icons.repeat_rounded, size: 10, color: const Color(0xFF10B981)), // Tiny recurring icon
                         const SizedBox(width: 4),
                         Text(
-                          '${CurrencyFormat.format(context, category.monthlyMandate!)} / mo',
+                          '${CurrencyFormat.formatCompact(context, category.monthlyMandate!)} / mo',
                           style: const TextStyle(
                             color: Color(0xFF10B981),
                             fontSize: 10,

@@ -16,6 +16,7 @@ import '../settings/settings_screen.dart';
 import '../analytics/analytics_screen.dart';
 import '../settings/categories_screen.dart';
 import '../forecast/forecast_screen.dart';
+import '../../utils/app_theme.dart'; // NEW: for AppColors.income/expense/investment
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,11 +28,15 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final PageController _pageController = PageController(initialPage: 1);
 
-  // 🟢 Cache for patterns to enable "Soft Matching"
+  // Cache for patterns to enable "Soft Matching"
   List<RecurringPattern> _recurringPatterns = [];
 
   int _currentNavIndex = 1;
   bool _isActivityExpanded = false;
+
+  // position for draggable +
+  double _fabLeft = 0;
+  double _fabTop = 0;
 
   @override
   void initState() {
@@ -39,10 +44,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadRecurringPatterns();
   }
 
-  // 🟢 Load patterns so we can "guess" recurring transactions
   Future<void> _loadRecurringPatterns() async {
     final isar = DatabaseService().syncDb;
-    final patterns = await isar.recurringPatterns.where().filter().isActiveEqualTo(true).findAll();
+    final patterns = await isar.recurringPatterns
+        .where()
+        .filter()
+        .isActiveEqualTo(true)
+        .findAll();
     if (mounted) {
       setState(() {
         _recurringPatterns = patterns;
@@ -57,32 +65,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onNavTapped(int index) {
-    if (index == 2) {
-      _showTransactionDialog(context, null);
-      return;
-    }
-    final pageIndex = index > 2 ? index - 1 : index;
-
+    // 0 = Analytics, 1 = Home, 2 = Forecast
     setState(() {
       _currentNavIndex = index;
     });
     _pageController.animateToPage(
-      pageIndex,
+      index,
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
   }
 
   void _onPageChanged(int pageIndex) {
-    int navIndex;
-    if (pageIndex <= 1) {
-      navIndex = pageIndex;
-    } else {
-      navIndex = pageIndex + 1;
-    }
-
     setState(() {
-      _currentNavIndex = navIndex;
+      _currentNavIndex = pageIndex;
     });
   }
 
@@ -90,8 +86,6 @@ class _HomeScreenState extends State<HomeScreen> {
       BuildContext context,
       model.TransactionModel? transaction,
       ) {
-    final finance = Provider.of<FinanceProvider>(context, listen: false);
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -108,8 +102,6 @@ class _HomeScreenState extends State<HomeScreen> {
               CategoryBucket.liability,
               CategoryBucket.goal,
             ],
-            // 🟢 FIX: AddTransactionSheet already saves to provider.
-            // Here we only refresh recurring cache / UI.
             onSave: (tx, {required bool isEditing}) async {
               await _loadRecurringPatterns();
             },
@@ -126,100 +118,249 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
     final onBg = theme.colorScheme.onSurface;
     final bottomBarColor =
-        theme.bottomNavigationBarTheme.backgroundColor ?? theme.colorScheme.surface;
+        theme.bottomNavigationBarTheme.backgroundColor ??
+            theme.colorScheme.surface;
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      floatingActionButton: null,
-      floatingActionButtonLocation: null,
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: _onPageChanged,
-        physics: const BouncingScrollPhysics(),
-        children: [
-          const AnalyticsScreen(),
-          _buildDashboard(provider, theme, onBg, themeProvider.homeCardColors),
-          const ForecastScreen(),
-          const SettingsScreen(),
-        ],
-      ),
-      bottomNavigationBar: Theme(
-        data: theme.copyWith(
-          canvasColor: bottomBarColor,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // initial fabTop if not set yet
+        if (_fabTop == 0 && _fabLeft == 0) {
+          _fabLeft = constraints.maxWidth - 88; // right side
+          _fabTop = constraints.maxHeight - 170; // just above nav bar
+        }
+
+        final screenWidth = constraints.maxWidth;
+        final screenHeight = constraints.maxHeight;
+
+        return Scaffold(
+          backgroundColor: theme.scaffoldBackgroundColor,
+          floatingActionButton: null,
+          floatingActionButtonLocation: null,
+          body: Stack(
+            children: [
+              PageView(
+                controller: _pageController,
+                onPageChanged: _onPageChanged,
+                physics: const BouncingScrollPhysics(),
+                children: [
+                  const AnalyticsScreen(),
+                  _buildDashboard(
+                    provider,
+                    theme,
+                    onBg,
+                    themeProvider.homeCardColors,
+                  ),
+                  const ForecastScreen(),
+                ],
+              ),
+
+              // Recurring feedback banner
+              if (provider.lastRecurringMatchMessage != null)
+                _buildRecurringBanner(context, provider, theme),
+
+              // Draggable "+" button
+              Positioned(
+                left: _fabLeft,
+                top: _fabTop,
+                child: Draggable(
+                  feedback: _buildFreePlusButton(theme),
+                  childWhenDragging: const SizedBox.shrink(),
+                  child: GestureDetector(
+                    onTap: () => _showTransactionDialog(context, null),
+                    child: _buildFreePlusButton(theme),
+                  ),
+                  onDragEnd: (details) {
+                    final offset = details.offset;
+                    setState(() {
+                      _fabLeft = offset.dx.clamp(8, screenWidth - 72);
+                      _fabTop = offset.dy.clamp(
+                        80,
+                        screenHeight - 170,
+                      );
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+          bottomNavigationBar: Theme(
+            data: theme.copyWith(
+              canvasColor: bottomBarColor,
+            ),
+            child: BottomNavigationBar(
+              currentIndex: _currentNavIndex,
+              onTap: _onNavTapped,
+              type: BottomNavigationBarType.fixed,
+              backgroundColor: bottomBarColor,
+              selectedItemColor: theme.colorScheme.primary,
+              unselectedItemColor: onBg.withOpacity(0.6),
+              showUnselectedLabels: true,
+              selectedFontSize: 12,
+              unselectedFontSize: 12,
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.pie_chart_outline_rounded),
+                  activeIcon: Icon(Icons.pie_chart_rounded),
+                  label: 'Analytics',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.home_outlined),
+                  activeIcon: Icon(Icons.home_rounded),
+                  label: 'Home',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.insights_outlined),
+                  activeIcon: Icon(Icons.insights_rounded),
+                  label: 'Forecast',
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFreePlusButton(ThemeData theme) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            color: theme.colorScheme.surface.withOpacity(0.28),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.55),
+              width: 1.4,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.20),
+                blurRadius: 18,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '+',
+            style: TextStyle(
+              fontSize: 34,
+              fontWeight: FontWeight.w900,
+              color: theme.colorScheme.primary.withOpacity(0.95),
+              letterSpacing: 0,
+            ),
+          ),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _currentNavIndex,
-          onTap: _onNavTapped,
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: bottomBarColor,
-          selectedItemColor: theme.colorScheme.primary,
-          unselectedItemColor: onBg.withOpacity(0.6),
-          showUnselectedLabels: true,
-          selectedFontSize: 12,
-          unselectedFontSize: 12,
-          items: [
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.pie_chart_outline_rounded),
-              activeIcon: Icon(Icons.pie_chart_rounded),
-              label: 'Analytics',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home_rounded),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF3B82F6),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.add,
-                      color: Colors.white,
-                      size: 26,
-                    ),
+      ),
+    );
+  }
+
+  // ───── BLUE BANNER ─────
+
+  Widget _buildRecurringBanner(
+      BuildContext context,
+      FinanceProvider provider,
+      ThemeData theme,
+      ) {
+    final onBg = theme.colorScheme.onSurface;
+    final message = provider.lastRecurringMatchMessage!;
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 72, // just above bottom nav
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 280),
+              padding:
+              const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFF2563EB),
+                    Color(0xFF3B82F6),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF2563EB).withOpacity(0.4),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
                   ),
                 ],
               ),
-              activeIcon: Column(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Row(
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF3B82F6),
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.16),
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
-                      Icons.add,
+                      Icons.repeat_rounded,
                       color: Colors.white,
-                      size: 28,
+                      size: 18,
                     ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Recurring insight',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          message,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  IconButton(
+                    onPressed: () =>
+                        provider.setRecurringMatchMessage(null),
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: Colors.white.withOpacity(0.9),
+                      size: 18,
+                    ),
+                    splashColor: Colors.transparent,
+                    highlightColor: Colors.transparent,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
                   ),
                 ],
               ),
-              label: '',
             ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.insights_outlined),
-              activeIcon: Icon(Icons.insights_rounded),
-              label: 'Forecast',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.settings_outlined),
-              activeIcon: Icon(Icons.settings),
-              label: 'Settings',
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -234,16 +375,23 @@ class _HomeScreenState extends State<HomeScreen> {
       List<Color> gradientColors,
       ) {
     final now = DateTime.now();
-    final List<model.TransactionModel> allTransactions = provider.transactions;
+    final List<model.TransactionModel> allTransactions =
+        provider.transactions;
     final hasAnyData = allTransactions.isNotEmpty;
 
     final currentMonthTransactions = allTransactions
-        .where((tx) => tx.date.month == now.month && tx.date.year == now.year)
+        .where(
+          (tx) =>
+      tx.date.month == now.month && tx.date.year == now.year,
+    )
         .toList()
       ..sort((a, b) => b.date.compareTo(a.date));
 
-    final groupedTransactions = _groupTransactionsByWeek(currentMonthTransactions);
+    final groupedTransactions =
+    _groupTransactionsByWeek(currentMonthTransactions);
     final bool hasCurrentMonthData = currentMonthTransactions.isNotEmpty;
+
+    final unreadCount = provider.unreadNotificationCount;
 
     return SafeArea(
       child: Padding(
@@ -268,39 +416,105 @@ class _HomeScreenState extends State<HomeScreen> {
                           letterSpacing: -0.5,
                         ),
                       ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: theme.cardColor,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: onBg.withOpacity(0.08)),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.calendar_today_rounded,
-                              color: onBg.withOpacity(0.6),
-                              size: 14,
+                      Row(
+                        children: [
+                          // Notification bell
+                          GestureDetector(
+                            onTap: () => _showNotificationCenter(context),
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: theme.cardColor,
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color:
+                                        Colors.black.withOpacity(0.04),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Icon(
+                                    Icons.notifications_none_rounded,
+                                    size: 20,
+                                    color: onBg.withOpacity(0.8),
+                                  ),
+                                ),
+                                if (unreadCount > 0)
+                                  Positioned(
+                                    right: -2,
+                                    top: -2,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 5, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEF4444),
+                                        borderRadius:
+                                        BorderRadius.circular(999),
+                                      ),
+                                      child: Text(
+                                        unreadCount > 9
+                                            ? '9+'
+                                            : unreadCount.toString(),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _getCurrentMonthYear(),
-                              style: TextStyle(
-                                color: onBg,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
+                          ),
+                          const SizedBox(width: 10),
+                          // Settings icon at top-right
+                          InkWell(
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const SettingsScreen(),
+                                ),
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(999),
+                            child: Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                color: theme.cardColor,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color:
+                                    Colors.black.withOpacity(0.04),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                Icons.settings_rounded,
+                                size: 18,
+                                color: onBg.withOpacity(0.8),
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
-                  _buildSafeToSpendCard(provider, theme, hasAnyData, gradientColors),
+                  _buildSafeToSpendCard(
+                    provider,
+                    theme,
+                    hasAnyData,
+                    gradientColors,
+                  ),
                   const SizedBox(height: 24),
                   if (hasCurrentMonthData) ...[
                     InkWell(
@@ -311,9 +525,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                       borderRadius: BorderRadius.circular(8),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4.0),
+                        padding:
+                        const EdgeInsets.symmetric(vertical: 4.0),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          mainAxisAlignment:
+                          MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
                               "Monthly Transactions",
@@ -356,8 +572,10 @@ class _HomeScreenState extends State<HomeScreen> {
               SliverList(
                 delegate: SliverChildBuilderDelegate(
                       (context, index) {
-                    final groupKey = groupedTransactions.keys.elementAt(index);
-                    final transactions = groupedTransactions[groupKey]!;
+                    final groupKey =
+                    groupedTransactions.keys.elementAt(index);
+                    final transactions =
+                    groupedTransactions[groupKey]!;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -384,6 +602,121 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _showNotificationCenter(BuildContext context) {
+    final provider = Provider.of<FinanceProvider>(context, listen: false);
+    final theme = Theme.of(context);
+    final onBg = theme.colorScheme.onSurface;
+    final notifications = provider.notifications;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return ClipRRect(
+          borderRadius:
+          const BorderRadius.vertical(top: Radius.circular(28)),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              color: theme.cardColor.withOpacity(0.98),
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 16,
+                bottom: MediaQuery.of(ctx).padding.bottom + 16,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        "Notifications",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: onBg,
+                        ),
+                      ),
+                      const Spacer(),
+                      if (provider.unreadNotificationCount > 0)
+                        TextButton(
+                          onPressed: provider.markAllNotificationsRead,
+                          child: const Text(
+                            "Mark all read",
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  if (notifications.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Text(
+                        "No notifications yet.",
+                        style: TextStyle(
+                          color: onBg.withOpacity(0.6),
+                          fontSize: 13,
+                        ),
+                      ),
+                    )
+                  else
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: notifications.length,
+                        separatorBuilder: (_, __) => Divider(
+                          color: onBg.withOpacity(0.06),
+                        ),
+                        itemBuilder: (_, index) {
+                          final n = notifications[index];
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              Icons.notifications_rounded,
+                              color: n.isRead
+                                  ? onBg.withOpacity(0.4)
+                                  : const Color(0xFF3B82F6),
+                            ),
+                            title: Text(
+                              n.title,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: onBg,
+                              ),
+                            ),
+                            subtitle: Text(
+                              n.message,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: onBg.withOpacity(0.7),
+                              ),
+                            ),
+                            trailing: n.isRead
+                                ? null
+                                : IconButton(
+                              icon: const Icon(
+                                Icons.check_rounded,
+                                size: 18,
+                              ),
+                              onPressed: () => provider
+                                  .markNotificationRead(n.id),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _weekHeader(String label, Color onBg) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
@@ -400,26 +733,30 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Map<String, List<model.TransactionModel>> _groupTransactionsByWeek(
-      List<model.TransactionModel> transactions,
-      ) {
+      List<model.TransactionModel> transactions) {
     final Map<String, List<model.TransactionModel>> groups = {};
-    final now = DateTime.now();
 
+    final now = DateTime.now();
     final currentWeekday = now.weekday;
+    // The "Monday" of the current week (or Sunday if your locale differs, but logic same)
+    // We'll treat Monday=1 as start.
     final startOfThisWeek =
-    DateTime(now.year, now.month, now.day - currentWeekday + 1);
-    final startOfLastWeek = startOfThisWeek.subtract(const Duration(days: 7));
-    final startOf2WeeksAgo = startOfThisWeek.subtract(const Duration(days: 14));
+    DateTime(now.year, now.month, now.day - (currentWeekday - 1));
+    final startOfLastWeek =
+    startOfThisWeek.subtract(const Duration(days: 7));
+    final startOf2WeeksAgo =
+    startOfThisWeek.subtract(const Duration(days: 14));
 
     for (var tx in transactions) {
       String label;
-      if (tx.date.isAfter(startOfThisWeek.subtract(const Duration(seconds: 1)))) {
+      if (tx.date.isAfter(
+          startOfThisWeek.subtract(const Duration(seconds: 1)))) {
         label = "This week";
-      } else if (tx.date
-          .isAfter(startOfLastWeek.subtract(const Duration(seconds: 1)))) {
+      } else if (tx.date.isAfter(
+          startOfLastWeek.subtract(const Duration(seconds: 1)))) {
         label = "Last week";
-      } else if (tx.date
-          .isAfter(startOf2WeeksAgo.subtract(const Duration(seconds: 1)))) {
+      } else if (tx.date.isAfter(
+          startOf2WeeksAgo.subtract(const Duration(seconds: 1)))) {
         label = "2 Weeks ago";
       } else {
         label = "Earlier this month";
@@ -431,13 +768,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return groups;
   }
 
-  // ───────────────── HERO CARD ─────────────────
+  // ───── HERO CARD ─────
 
   Color _progressColor(double pct) {
-    if (pct >= 1.0) return const Color(0xFF22C55E);
-    if (pct >= 0.75) return const Color(0xFF4ADE80);
-    if (pct >= 0.5) return const Color(0xFFFACC15);
-    return const Color(0xFFFB7185);
+    if (pct < 0.5) return const Color(0xFF22C55E); // green
+    if (pct < 0.75) return const Color(0xFF4ADE80); // light green
+    if (pct < 1.0) return const Color(0xFFFACC15); // yellow
+    return const Color(0xFFFB7185); // red
   }
 
   Widget _buildSafeToSpendCard(
@@ -450,14 +787,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final now = DateTime.now();
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
     final daysRemaining = daysInMonth - now.day + 1;
-    final dailySafe = safe > 0 ? (safe / daysRemaining) : 0.0;
+    final dailySafe = safe > 0 ? safe / daysRemaining : 0.0;
 
-    final mandateCats = provider.categories.where(
-          (c) =>
-      c.bucket == CategoryBucket.expense &&
-          c.isMandate &&
-          c.monthlyMandate != null,
-    );
+    final mandateCats = provider.categories
+        .where((c) =>
+    c.bucket == CategoryBucket.expense &&
+        c.isMandate &&
+        c.monthlyMandate != null)
+        .toList();
 
     final hasAnyBudget = mandateCats.isNotEmpty;
     double progress = 0;
@@ -469,15 +806,15 @@ class _HomeScreenState extends State<HomeScreen> {
         0.0,
             (sum, c) => sum + (c.monthlyMandate ?? 0),
       );
+
       spentThisMonth = provider.transactions
-          .where(
-            (tx) =>
-        tx.categoryBucket == CategoryBucket.expense &&
-            tx.date.month == now.month &&
-            tx.date.year == now.year &&
-            mandateCats.any((c) => c.id == tx.categoryId),
-      )
+          .where((tx) =>
+      tx.categoryBucket == CategoryBucket.expense &&
+          tx.date.month == now.month &&
+          tx.date.year == now.year &&
+          mandateCats.any((c) => c.id == tx.categoryId))
           .fold<double>(0.0, (sum, tx) => sum + tx.amount);
+
       progress = totalBudget > 0
           ? (spentThisMonth / totalBudget).clamp(0.0, 1.2)
           : 0.0;
@@ -530,11 +867,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Row(
                         children: [
-                          Icon(
-                            Icons.shield_moon_rounded,
-                            color: secondaryText,
-                            size: 14,
-                          ),
+                          Icon(Icons.shield_moon_rounded,
+                              color: secondaryText, size: 14),
                           const SizedBox(width: 6),
                           Text(
                             "Safe to spend",
@@ -548,7 +882,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const Spacer(),
                       Text(
-                        CurrencyFormat.format(context, safe),
+                        CurrencyFormat.formatCompact(context, safe),
                         style: TextStyle(
                           color: primaryText,
                           fontSize: 24,
@@ -578,18 +912,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    border: Border.all(
+                        color: Colors.white.withOpacity(0.1)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          const Icon(
-                            Icons.sunny,
-                            color: Color(0xFFFACC15),
-                            size: 14,
-                          ),
+                          const Icon(Icons.sunny,
+                              color: Color(0xFFFACC15), size: 14),
                           const SizedBox(width: 6),
                           Text(
                             "Daily Average",
@@ -603,7 +935,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const Spacer(),
                       Text(
-                        CurrencyFormat.format(context, dailySafe),
+                        CurrencyFormat.formatCompact(context, dailySafe),
                         style: TextStyle(
                           color: primaryText,
                           fontSize: 24,
@@ -629,8 +961,8 @@ class _HomeScreenState extends State<HomeScreen> {
           if (hasAnyBudget)
             Container(
               width: double.infinity,
-              padding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.black.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(20),
@@ -660,10 +992,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: TweenAnimationBuilder<double>(
                             duration: const Duration(milliseconds: 500),
                             curve: Curves.easeOutCubic,
-                            tween: Tween<double>(
-                              begin: 0,
-                              end: clamped,
-                            ),
+                            tween: Tween<double>(begin: 0, end: clamped),
                             builder: (context, value, _) {
                               final color = _progressColor(value);
                               return Stack(
@@ -689,7 +1018,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                           BorderRadius.circular(999),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: color.withOpacity(0.45),
+                                              color: color
+                                                  .withOpacity(0.45),
                                               blurRadius: 10,
                                               spreadRadius: 0.5,
                                             ),
@@ -711,7 +1041,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        "${CurrencyFormat.format(context, spentThisMonth)} of ${CurrencyFormat.format(context, totalBudget)}",
+                        "${CurrencyFormat.formatCompact(context, spentThisMonth)} of ${CurrencyFormat.formatCompact(context, totalBudget)}",
                         style: TextStyle(
                           color: secondaryText,
                           fontSize: 11,
@@ -731,12 +1061,15 @@ class _HomeScreenState extends State<HomeScreen> {
             )
           else
             GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const CategoriesScreen(initialIndex: 0),
-                ),
-              ),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                    const CategoriesScreen(initialIndex: 0),
+                  ),
+                );
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 14, vertical: 10),
@@ -747,11 +1080,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.info_outline_rounded,
-                      color: secondaryText,
-                      size: 16,
-                    ),
+                    Icon(Icons.info_outline_rounded,
+                        color: secondaryText, size: 16),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -773,7 +1103,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ───────────────── TRANSACTION ITEM ─────────────────
 
-  // 🟢 Helper to "Soft Match" transactions to rules
   bool _isPotentialRecurringMatch(model.TransactionModel tx) {
     if (_recurringPatterns.isEmpty) return false;
     return _recurringPatterns.any(
@@ -793,9 +1122,12 @@ class _HomeScreenState extends State<HomeScreen> {
       ) {
     final isIncome = tx.type == model.TransactionType.income;
     final isInvestment = tx.type == model.TransactionType.investment;
+
+    // UPDATED: Semantic colors
     final color = isIncome
-        ? Colors.greenAccent
-        : (isInvestment ? Colors.blueAccent : Colors.redAccent);
+        ? AppColors.income
+        : (isInvestment ? AppColors.investment : AppColors.expense);
+
     final sign = isIncome ? "+" : "-";
 
     final bool isRecurring =
@@ -841,10 +1173,29 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     if (isRecurring) ...[
                       const SizedBox(width: 6),
-                      Icon(
-                        Icons.update,
-                        size: 13,
-                        color: onBg.withOpacity(0.5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blueAccent.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.repeat_rounded,
+                                size: 14, color: Colors.blueAccent),
+                            SizedBox(width: 3),
+                            Text(
+                              "Recurring",
+                              style: TextStyle(
+                                color: Colors.blueAccent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ],
@@ -877,7 +1228,7 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                "$sign${CurrencyFormat.format(context, tx.amount)}",
+                "$sign${CurrencyFormat.formatCompact(context, tx.amount)}",
                 style: TextStyle(
                   color: color,
                   fontSize: 14,
@@ -917,28 +1268,26 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // 🟢 IMPROVED DELETE DIALOG
   void _confirmDelete(
       BuildContext context,
       FinanceProvider provider,
       model.TransactionModel tx,
       ) {
     final isLinkedToRule = tx.recurringRuleId != null;
-
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).dialogBackgroundColor,
-        title: const Text("Delete Transaction?"),
+        title: const Text('Delete Transaction?'),
         content: Text(
           isLinkedToRule
-              ? "This is a recurring transaction. Do you want to stop future repeats too?"
-              : "This cannot be undone.",
+              ? 'This is a recurring transaction. Do you want to stop future repeats too? This cannot be undone.'
+              : 'This will delete this transaction. This cannot be undone.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel"),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () {
@@ -947,7 +1296,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _loadRecurringPatterns();
             },
             child: Text(
-              isLinkedToRule ? "Delete This One" : "Delete",
+              isLinkedToRule ? 'Delete This One' : 'Delete',
               style: const TextStyle(color: Colors.redAccent),
             ),
           ),
@@ -955,13 +1304,17 @@ class _HomeScreenState extends State<HomeScreen> {
             TextButton(
               onPressed: () async {
                 provider.deleteTransaction(tx.id);
-                await provider.deleteRecurringPattern(tx.recurringRuleId!);
-                if (context.mounted) Navigator.pop(ctx);
-                _loadRecurringPatterns();
+                await provider
+                    .deleteRecurringPattern(tx.recurringRuleId!);
+                if (context.mounted) {
+                  Navigator.pop(ctx);
+                  _loadRecurringPatterns();
+                }
               },
               child: const Text(
-                "Stop Repeating",
-                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                'Stop Repeating',
+                style: TextStyle(
+                    color: Colors.red, fontWeight: FontWeight.bold),
               ),
             ),
         ],
@@ -969,25 +1322,20 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _getCurrentMonthYear() {
-    final now = DateTime.now();
-    return "${_getMonthName(now.month)} '${now.year.toString().substring(2)}";
-  }
-
   String _getMonthName(int month) {
     const months = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec"
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     return months[month - 1];
   }
